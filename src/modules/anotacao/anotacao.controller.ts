@@ -9,14 +9,16 @@ export const anotacaoController = {
       res.json(notes);
     } catch (e) { next(e); }
   },
+
   async create(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = req.user!.id;
-      const { titulo, conteudo, favorita } = req.body;
-      const note = await anotacaoService.create(userId, { titulo, conteudo, favorita });
+      const { titulo, conteudo, favorita, cor } = req.body;
+      const note = await anotacaoService.create(userId, { titulo, conteudo, favorita, cor });
       res.status(201).json(note);
     } catch (e) { next(e); }
   },
+
   async get(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = req.user!.id;
@@ -25,15 +27,17 @@ export const anotacaoController = {
       res.json(note);
     } catch (e) { next(e); }
   },
+
   async update(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = req.user!.id;
       const id = Number(req.params.id);
-      const { titulo, conteudo, favorita } = req.body;
-      const note = await anotacaoService.update(userId, id, { titulo, conteudo, favorita });
+      const { titulo, conteudo, favorita, cor } = req.body;
+      const note = await anotacaoService.update(userId, id, { titulo, conteudo, favorita, cor });
       res.json(note);
     } catch (e) { next(e); }
   },
+
   async remove(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = req.user!.id;
@@ -43,4 +47,3 @@ export const anotacaoController = {
     } catch (e) { next(e); }
   }
 };
-

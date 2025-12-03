@@ -13,8 +13,7 @@ export const knex = Knex({
   },
   pool: {
     min: 0,
-    max: 100,
-    idleTimeoutMillis: 10000
+    max: 2, // Reduzido para evitar travamentos em desenvolvimento
+    idleTimeoutMillis: 1000
   }
 });
-
