@@ -20,6 +20,25 @@ export const usuarioController = {
     } catch (e) {
       next(e);
     }
+  },
+
+  async forgotPassword(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { email } = req.body;
+      await usuarioService.forgotPassword(email);
+      res.json({ message: 'Link de recuperação enviado com sucesso.' });
+    } catch (e) {
+      next(e);
+    }
+  },
+
+  async resetPassword(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { token, newPassword } = req.body;
+      await usuarioService.resetPassword(token, newPassword);
+      res.json({ message: 'Senha alterada com sucesso.' });
+    } catch (e) {
+      next(e);
+    }
   }
 };
-

@@ -22,6 +22,9 @@ export const usuarioRepository = {
   async create(email: string, senhaHash: string): Promise<Usuario> {
     const [id] = await knex<Usuario>(table).insert({ email, senha: senhaHash });
     return { id: Number(id), email, senha: senhaHash };
+  },
+
+  async updatePassword(id: number, senhaHash: string): Promise<void> {
+    await knex(table).where({ id }).update({ senha: senhaHash });
   }
 };
-
