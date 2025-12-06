@@ -4,8 +4,9 @@ import { usuarioService } from './usuario.service';
 export const usuarioController = {
   async create(req: Request, res: Response, next: NextFunction) {
     try {
-      const { email, senha } = req.body;
-      const user = await usuarioService.register(email, senha);
+      // Extrai nome e sobrenome
+      const { email, senha, nome, sobrenome } = req.body;
+      const user = await usuarioService.register({ email, senha, nome, sobrenome });
       res.status(201).json(user);
     } catch (e) {
       next(e);

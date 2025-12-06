@@ -4,6 +4,8 @@ export type Usuario = {
   id: number;
   email: string;
   senha: string;
+  nome: string;      // <--- NOVO
+  sobrenome: string; // <--- NOVO
 };
 
 const table = 'usuario';
@@ -19,12 +21,15 @@ export const usuarioRepository = {
     return row;
   },
 
-  async create(email: string, senhaHash: string): Promise<Usuario> {
-    const [id] = await knex<Usuario>(table).insert({ email, senha: senhaHash });
-    return { id: Number(id), email, senha: senhaHash };
-  },
-
-  async updatePassword(id: number, senhaHash: string): Promise<void> {
-    await knex(table).where({ id }).update({ senha: senhaHash });
+  // Recebe nome e sobrenome agora
+  async create(data: { email: string, senhaHash: string, nome: string, sobrenome: string }): Promise<Usuario> {
+    const [id] = await knex<Usuario>(table).insert({ 
+      email: data.email, 
+      senha: data.senhaHash,
+      nome: data.nome,          // <--- SALVA
+      sobrenome: data.sobrenome // <--- SALVA
+    });
+    
+    return { id: Number(id), email: data.email, senha: data.senhaHash, nome: data.nome, sobrenome: data.sobrenome };
   }
 };
