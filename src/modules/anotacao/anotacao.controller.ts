@@ -13,8 +13,9 @@ export const anotacaoController = {
   async create(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = req.user!.id;
-      const { titulo, conteudo, favorita, cor } = req.body;
-      const note = await anotacaoService.create(userId, { titulo, conteudo, favorita, cor });
+      // Pega dataLembrete
+      const { titulo, conteudo, favorita, cor, dataLembrete } = req.body;
+      const note = await anotacaoService.create(userId, { titulo, conteudo, favorita, cor, dataLembrete });
       res.status(201).json(note);
     } catch (e) { next(e); }
   },
@@ -32,8 +33,9 @@ export const anotacaoController = {
     try {
       const userId = req.user!.id;
       const id = Number(req.params.id);
-      const { titulo, conteudo, favorita, cor } = req.body;
-      const note = await anotacaoService.update(userId, id, { titulo, conteudo, favorita, cor });
+      // Pega dataLembrete
+      const { titulo, conteudo, favorita, cor, dataLembrete } = req.body;
+      const note = await anotacaoService.update(userId, id, { titulo, conteudo, favorita, cor, dataLembrete });
       res.json(note);
     } catch (e) { next(e); }
   },

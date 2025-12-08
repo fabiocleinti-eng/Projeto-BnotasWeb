@@ -1,9 +1,11 @@
 import { ApiError } from '../../middlewares/error';
 import { anotacaoRepository } from './anotacao.repository';
 
+// Converte do formato do Banco (snake_case) para o Frontend (camelCase)
 const mapNote = (n: any) => ({
   ...n,
-  favorita: !!n.favorita
+  favorita: !!n.favorita,
+  dataLembrete: n.data_lembrete // <--- MAPEAMENTO
 });
 
 export const anotacaoService = {
@@ -12,7 +14,7 @@ export const anotacaoService = {
     return notes.map(mapNote);
   },
 
-  async create(userId: number, data: { titulo: string; conteudo?: string; favorita?: boolean; cor?: string }) {
+  async create(userId: number, data: { titulo: string; conteudo?: string; favorita?: boolean; cor?: string; dataLembrete?: string }) {
     const note = await anotacaoRepository.createForUser(userId, data);
     return mapNote(note);
   },
@@ -23,7 +25,7 @@ export const anotacaoService = {
     return mapNote(note);
   },
 
-  async update(userId: number, id: number, data: { titulo?: string; conteudo?: string; favorita?: boolean; cor?: string }) {
+  async update(userId: number, id: number, data: { titulo?: string; conteudo?: string; favorita?: boolean; cor?: string; dataLembrete?: string }) {
     const updated = await anotacaoRepository.updateForUser(userId, id, data);
     if (!updated) throw new ApiError(404, 'Anotação não encontrada', 'NOT_FOUND');
     return this.get(userId, id);

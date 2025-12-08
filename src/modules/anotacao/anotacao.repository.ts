@@ -7,25 +7,29 @@ export type Anotacao = {
   dataCriacao: string | Date;
   dataModificacao: string | Date;
   favorita: number | boolean;
-  cor: string; // Campo novo
+  cor: string;
+  data_lembrete?: string | Date | null; // <--- NOVO NO BANCO
+  lembrete_enviado?: number | boolean;
 };
 
 const table = 'anotacao';
 const linkTable = 'usuario_anotacao';
 
 export const anotacaoRepository = {
-  // 'conteudo' agora é opcional (?) para evitar erro de tipagem
-  async createForUser(userId: number, data: { titulo: string; conteudo?: string; favorita?: boolean; cor?: string }) {
+  async createForUser(userId: number, data: { titulo: string; conteudo?: string; favorita?: boolean; cor?: string; dataLembrete?: string | null }) {
     return await knex.transaction(async (trx) => {
       const now = knex.fn.now();
       const [noteId] = await trx<Anotacao>(table).insert({
         titulo: data.titulo,
-        conteudo: data.conteudo ?? '', // Garante string vazia se vier undefined
+        conteudo: data.conteudo ?? '',
         dataCriacao: now,
         dataModificacao: now,
         favorita: data.favorita ? 1 : 0,
-        cor: data.cor || '#fff9c4' // Salva a cor
+        cor: data.cor || '#fff9c4',
+        data_lembrete: data.dataLembrete ? new Date(data.dataLembrete) : null, // <--- SALVA A DATA
+        lembrete_enviado: 0
       });
+      
       await trx(linkTable).insert({ usuario_id: userId, anotacao_id: Number(noteId) });
       const note = await trx<Anotacao>(table).where({ id: Number(noteId) }).first();
       return note!;
@@ -51,7 +55,7 @@ export const anotacaoRepository = {
     return row;
   },
 
-  async updateForUser(userId: number, id: number, data: Partial<Pick<Anotacao, 'titulo' | 'conteudo' | 'favorita' | 'cor'>>) {
+  async updateForUser(userId: number, id: number, data: any) {
     const belongs = await knex(linkTable).where({ usuario_id: userId, anotacao_id: id }).first();
     if (!belongs) return 0;
     
@@ -61,7 +65,14 @@ export const anotacaoRepository = {
     if (data.titulo !== undefined) updateData.titulo = data.titulo;
     if (data.conteudo !== undefined) updateData.conteudo = data.conteudo;
     if (data.favorita !== undefined) updateData.favorita = data.favorita ? 1 : 0;
-    if (data.cor !== undefined) updateData.cor = data.cor; // Atualiza a cor
+    if (data.cor !== undefined) updateData.cor = data.cor;
+    
+    // ATUALIZA A DATA DO LEMBRETE
+    if (data.dataLembrete !== undefined) {
+      updateData.data_lembrete = data.dataLembrete ? new Date(data.dataLembrete) : null;
+      // Se alterou a data, reseta o envio para enviar novamente no novo horário
+      updateData.lembrete_enviado = 0; 
+    }
 
     const updated = await knex<Anotacao>(table).where({ id }).update(updateData);
     return updated;

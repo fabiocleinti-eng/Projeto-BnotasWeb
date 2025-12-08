@@ -4,13 +4,11 @@ import { usuarioService } from './usuario.service';
 export const usuarioController = {
   async create(req: Request, res: Response, next: NextFunction) {
     try {
-      // Extrai nome e sobrenome
-      const { email, senha, nome, sobrenome } = req.body;
-      const user = await usuarioService.register({ email, senha, nome, sobrenome });
+      // Pega o telefone também
+      const { email, senha, nome, sobrenome, telefone } = req.body;
+      const user = await usuarioService.register({ email, senha, nome, sobrenome, telefone });
       res.status(201).json(user);
-    } catch (e) {
-      next(e);
-    }
+    } catch (e) { next(e); }
   },
 
   async login(req: Request, res: Response, next: NextFunction) {
@@ -18,28 +16,22 @@ export const usuarioController = {
       const { email, senha } = req.body;
       const result = await usuarioService.login(email, senha);
       res.json(result);
-    } catch (e) {
-      next(e);
-    }
+    } catch (e) { next(e); }
   },
 
   async forgotPassword(req: Request, res: Response, next: NextFunction) {
     try {
       const { email } = req.body;
       await usuarioService.forgotPassword(email);
-      res.json({ message: 'Link de recuperação enviado com sucesso.' });
-    } catch (e) {
-      next(e);
-    }
+      res.json({ message: 'Link enviado.' });
+    } catch (e) { next(e); }
   },
 
   async resetPassword(req: Request, res: Response, next: NextFunction) {
     try {
       const { token, newPassword } = req.body;
       await usuarioService.resetPassword(token, newPassword);
-      res.json({ message: 'Senha alterada com sucesso.' });
-    } catch (e) {
-      next(e);
-    }
+      res.json({ message: 'Senha alterada.' });
+    } catch (e) { next(e); }
   }
 };

@@ -5,7 +5,8 @@ export const createAnotacaoSchema = z.object({
     titulo: z.string().min(1),
     conteudo: z.string().optional(),
     favorita: z.boolean().optional(),
-    cor: z.string().optional() // Campo novo
+    cor: z.string().optional(),
+    dataLembrete: z.string().datetime().optional().nullable() // <--- NOVO (Formato ISO)
   })
 });
 
@@ -14,7 +15,8 @@ export const updateAnotacaoSchema = z.object({
     titulo: z.string().min(1).optional(),
     conteudo: z.string().optional(),
     favorita: z.boolean().optional(),
-    cor: z.string().optional() // Campo novo
+    cor: z.string().optional(),
+    dataLembrete: z.string().datetime().optional().nullable() // <--- NOVO
   }),
   params: z.object({ id: z.string().regex(/^\d+$/) })
 });
