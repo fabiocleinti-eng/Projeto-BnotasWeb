@@ -5,7 +5,8 @@ import { anotacaoRepository } from './anotacao.repository';
 const mapNote = (n: any) => ({
   ...n,
   favorita: !!n.favorita,
-  dataLembrete: n.data_lembrete // <--- MAPEAMENTO
+  dataLembrete: n.data_lembrete,
+  qtdReagendamentos: n.qtd_reagendamentos || 0 // <--- MAPEAMENTO NOVO
 });
 
 export const anotacaoService = {

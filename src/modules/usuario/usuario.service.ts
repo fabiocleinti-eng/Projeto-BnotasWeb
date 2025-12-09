@@ -60,7 +60,10 @@ export const usuarioService = {
     }
 
     const token = jwt.sign({ sub: String(user.id), type: 'reset' }, env.JWT_SECRET, { expiresIn: '1h' });
-    const link = `http://localhost:4200/reset-password?token=${token}`;
+    
+    // CORREÇÃO 1: Codificar o token para garantir que caracteres especiais não quebrem na URL
+    const tokenCodificado = encodeURIComponent(token);
+    const link = `http://localhost:4200/reset-password?token=${tokenCodificado}`;
 
     const transporter = nodemailer.createTransport({
       service: 'gmail',
@@ -73,7 +76,7 @@ export const usuarioService = {
         to: email,
         subject: 'Redefinição de Senha',
         html: `<p>Olá, ${user.nome || 'Usuário'}!</p>
-               <p>Clique no link abaixo para criar uma nova senha:</p>
+               <p>Clique no link abaixo para criar uma nova senha (válido por 1 hora):</p>
                <a href="${link}">REDEFINIR SENHA</a>`
       });
     } catch (error) {
@@ -86,16 +89,44 @@ export const usuarioService = {
 
   async resetPassword(token: string, newPass: string) {
     try {
+      // 1. Verifica o token
       const payload = jwt.verify(token, env.JWT_SECRET) as any;
-      if (payload.type !== 'reset') throw new Error('Token inválido');
       
+      if (payload.type !== 'reset') {
+        throw new ApiError(400, 'Tipo de token inválido', 'INVALID_TOKEN_TYPE');
+      }
+      
+      // 2. Busca o usuário
       const user = await usuarioRepository.findById(Number(payload.sub));
-      if (!user) throw new ApiError(404, 'Usuário não encontrado', 'USER_NOT_FOUND');
+      if (!user) {
+        throw new ApiError(404, 'Usuário não encontrado', 'USER_NOT_FOUND');
+      }
 
+      // 3. Atualiza senha
       const hash = await bcrypt.hash(newPass, 10);
       await usuarioRepository.updatePassword(user.id, hash);
-    } catch (e) {
-      throw new ApiError(400, 'Token inválido ou expirado', 'INVALID_TOKEN');
+
+    } catch (e: any) {
+      // CORREÇÃO 2: Log detalhado para identificar o erro real no console do servidor
+      console.error('ERRO DETALHADO NO RESET PASSWORD:', e);
+
+      // Se o erro já for um ApiError (ex: 404 User Not Found), repassa ele
+      if (e instanceof ApiError) {
+        throw e;
+      }
+
+      // Se for erro de token expirado
+      if (e.name === 'TokenExpiredError') {
+        throw new ApiError(400, 'O link expirou. Solicite um novo.', 'TOKEN_EXPIRED');
+      }
+      
+      // Se for erro de token malformado ou assinatura inválida
+      if (e.name === 'JsonWebTokenError') {
+        throw new ApiError(400, 'Link inválido ou corrompido.', 'TOKEN_MALFORMED');
+      }
+
+      // Erro genérico para outros casos
+      throw new ApiError(400, 'Não foi possível redefinir a senha.', 'RESET_ERROR');
     }
   }
 };

@@ -55,7 +55,7 @@ export const anotacaoRepository = {
     return row;
   },
 
-  async updateForUser(userId: number, id: number, data: any) {
+async updateForUser(userId: number, id: number, data: any) {
     const belongs = await knex(linkTable).where({ usuario_id: userId, anotacao_id: id }).first();
     if (!belongs) return 0;
     
@@ -69,9 +69,20 @@ export const anotacaoRepository = {
     
     // ATUALIZA A DATA DO LEMBRETE
     if (data.dataLembrete !== undefined) {
-      updateData.data_lembrete = data.dataLembrete ? new Date(data.dataLembrete) : null;
-      // Se alterou a data, reseta o envio para enviar novamente no novo horário
-      updateData.lembrete_enviado = 0; 
+      const novaData = data.dataLembrete ? new Date(data.dataLembrete) : null;
+      updateData.data_lembrete = novaData;
+      
+      // Se definiu uma NOVA data (não é remoção), incrementa o contador
+      if (novaData !== null) {
+        updateData.lembrete_enviado = 0; 
+        updateData.etapa_lembrete = 0;
+        // INCREMENTA O CONTADOR NO BANCO (Soma +1 ao valor atual)
+        updateData.qtd_reagendamentos = knex.raw('qtd_reagendamentos + 1');
+      } else {
+        // Se removeu o lembrete (marcou como feito), zera ou mantém. Vamos manter o histórico? 
+        // Melhor zerar para não aparecer o ícone em notas concluídas.
+        updateData.qtd_reagendamentos = 0; 
+      }
     }
 
     const updated = await knex<Anotacao>(table).where({ id }).update(updateData);
