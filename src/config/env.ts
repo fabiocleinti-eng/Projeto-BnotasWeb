@@ -28,7 +28,10 @@ const envSchema = z.object({
 
   // --- EMAIL (Lê do .env) ---
   EMAIL_USER: z.string().email().optional(), // Opcional para não quebrar se não tiver configurado ainda
-  EMAIL_PASS: z.string().optional()
+  EMAIL_PASS: z.string().optional(),
+
+  // --- ENCRYPTION ---
+  ENCRYPTION_KEY: z.string().default('dev-encryption-key-change-in-production-32chars')
 });
 
 export const env = envSchema.parse(process.env);

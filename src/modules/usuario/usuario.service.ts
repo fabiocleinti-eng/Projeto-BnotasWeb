@@ -2,6 +2,7 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import nodemailer from 'nodemailer';
 import { usuarioRepository } from './usuario.repository';
+import { subscriptionRepository } from '../subscription/subscription.repository';
 import { ApiError } from '../../middlewares/error';
 import { env } from '../../config/env';
 
@@ -19,6 +20,14 @@ export const usuarioService = {
       nome: data.nome,
       sobrenome: data.sobrenome,
       telefone: data.telefone
+    });
+    
+    // Criar assinatura gratuita
+    await subscriptionRepository.create({
+      userId: user.id,
+      planId: 'free',
+      status: 'active',
+      features: []
     });
     
     return { id: user.id, email: user.email, nome: user.nome };

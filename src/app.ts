@@ -11,7 +11,8 @@ const app = express();
 
 app.use(helmet());
 app.use(cors({ origin: env.CORS_ORIGINS }));
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ limit: '10mb', extended: true }));
 app.use(morgan(env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 
 app.get('/health', async (_req, res) => {

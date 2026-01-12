@@ -21,8 +21,7 @@ async function checkAndSendEmails() {
   try {
     // Agora buscamos até a etapa 7 (1 minuto final)
     const notas = await knex('anotacao')
-      .join('usuario_anotacao', 'anotacao.id', 'usuario_anotacao.anotacao_id')
-      .join('usuario', 'usuario_anotacao.usuario_id', 'usuario.id')
+      .join('usuario', 'anotacao.usuario_id', 'usuario.id')
       .select(
         'anotacao.id', 
         'anotacao.titulo', 
@@ -32,7 +31,8 @@ async function checkAndSendEmails() {
         'usuario.nome'
       )
       .whereNotNull('anotacao.data_lembrete')
-      .andWhere('anotacao.etapa_lembrete', '<', 7); // <--- AUMENTADO PARA 7
+      .andWhere('anotacao.etapa_lembrete', '<', 7) // <--- AUMENTADO PARA 7
+      .andWhere('anotacao.deletado', 0); // Apenas notas não deletadas
 
     const agora = new Date();
 
