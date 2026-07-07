@@ -10,6 +10,9 @@ export type Usuario = {
   telefone?: string | null; // <--- ADICIONADO
   totp_secret?: string | null;   // segredo TOTP criptografado (2FA)
   totp_enabled?: number | boolean; // 2FA ativado
+  totp_backup_codes?: string | null; // JSON com hashes dos códigos de backup
+  bio?: string | null;
+  avatarUrl?: string | null;
 };
 
 const table = 'usuario';
@@ -49,11 +52,22 @@ export const usuarioRepository = {
     await knex(table).where({ id }).update({ senha: senhaHash });
   },
 
-  async update2FA(id: number, data: { totp_secret?: string | null; totp_enabled?: boolean }): Promise<void> {
+  async update2FA(id: number, data: { totp_secret?: string | null; totp_enabled?: boolean; totp_backup_codes?: string | null }): Promise<void> {
     const upd: any = {};
     if (data.totp_secret !== undefined) upd.totp_secret = data.totp_secret;
     if (data.totp_enabled !== undefined) upd.totp_enabled = data.totp_enabled ? 1 : 0;
+    if (data.totp_backup_codes !== undefined) upd.totp_backup_codes = data.totp_backup_codes;
     await knex(table).where({ id }).update(upd);
+  },
+
+  async updateProfile(id: number, data: { nome?: string; sobrenome?: string; telefone?: string | null; bio?: string | null; avatarUrl?: string | null }): Promise<void> {
+    const upd: any = {};
+    if (data.nome !== undefined) upd.nome = data.nome;
+    if (data.sobrenome !== undefined) upd.sobrenome = data.sobrenome;
+    if (data.telefone !== undefined) upd.telefone = data.telefone;
+    if (data.bio !== undefined) upd.bio = data.bio;
+    if (data.avatarUrl !== undefined) upd.avatarUrl = data.avatarUrl;
+    if (Object.keys(upd).length) await knex(table).where({ id }).update(upd);
   },
 
   // Exclusão de conta (LGPD): apaga notas e o usuário.

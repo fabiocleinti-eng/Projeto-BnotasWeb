@@ -11,7 +11,8 @@ import {
   deleteAccountSchema,
   login2FASchema,
   enable2FASchema,
-  disable2FASchema
+  disable2FASchema,
+  updatePerfilSchema
 } from '../modules/usuario/usuario.schemas';
 import { usuarioController } from '../modules/usuario/usuario.controller';
 
@@ -28,6 +29,10 @@ router.put('/usuarios/senha', auth, authLimiter, validate(changePasswordSchema),
 
 // Excluir conta e todos os dados (LGPD) — exige a senha para confirmar
 router.delete('/usuarios/me', auth, authLimiter, validate(deleteAccountSchema), usuarioController.deleteAccount);
+
+// === PERFIL (persistido no servidor) ===
+router.get('/usuarios/perfil', auth, usuarioController.getPerfil);
+router.put('/usuarios/perfil', auth, validate(updatePerfilSchema), usuarioController.updatePerfil);
 
 // === AUTENTICAÇÃO DE DOIS FATORES (TOTP) ===
 router.post('/login/2fa', authLimiter, validate(login2FASchema), usuarioController.login2FA);

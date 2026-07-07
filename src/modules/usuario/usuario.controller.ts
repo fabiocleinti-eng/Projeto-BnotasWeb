@@ -75,5 +75,13 @@ export const usuarioController = {
 
   async get2FAStatus(req: Request, res: Response, next: NextFunction) {
     try { res.json(await usuarioService.get2FAStatus(req.user!.id)); } catch (e) { next(e); }
+  },
+
+  async getPerfil(req: Request, res: Response, next: NextFunction) {
+    try { res.json(await usuarioService.getPerfil(req.user!.id)); } catch (e) { next(e); }
+  },
+
+  async updatePerfil(req: Request, res: Response, next: NextFunction) {
+    try { res.json(await usuarioService.updatePerfil(req.user!.id, req.body)); } catch (e) { next(e); }
   }
 };

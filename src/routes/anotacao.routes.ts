@@ -18,4 +18,10 @@ router.delete('/anotacoes/:id/permanent', auth, validate(idParamSchema), anotaca
 // Rate limit apertado: impede força bruta na senha das notas protegidas
 router.post('/anotacoes/:id/verify-password', auth, authLimiter, validate(verifyPasswordSchema), anotacaoController.verifyPassword);
 
+// Compartilhamento por link
+router.post('/anotacoes/:id/share', auth, validate(idParamSchema), anotacaoController.share);
+router.delete('/anotacoes/:id/share', auth, validate(idParamSchema), anotacaoController.unshare);
+// Visualização pública (sem login) — conteúdo sanitizado no servidor
+router.get('/public/anotacoes/:token', anotacaoController.getPublic);
+
 export default router;

@@ -15,6 +15,7 @@ export type Anotacao = {
   tags?: string | string[]; // JSON no banco, array no código
   deletado?: number | boolean;
   senha?: string | null; // Senha criptografada
+  share_token?: string | null; // Token de compartilhamento público
 };
 
 const table = 'anotacao';
@@ -64,18 +65,34 @@ export const anotacaoRepository = {
     return Number(row?.n || 0);
   },
 
-  async listByUser(userId: number, includeDeleted: boolean = false): Promise<Anotacao[]> {
+  async listByUser(userId: number, includeDeleted: boolean = false, q?: string): Promise<Anotacao[]> {
     const query = knex<Anotacao>(table)
       .select('anotacao.*')
       .innerJoin(linkTable, `${linkTable}.anotacao_id`, `${table}.id`)
       .where(`${linkTable}.usuario_id`, userId);
-    
+
     if (!includeDeleted) {
       query.where('anotacao.deletado', 0);
     }
-    
+
+    // Busca no SERVIDOR (título + conteúdo) — o front não precisa mais baixar tudo
+    if (q && q.trim()) {
+      const term = `%${q.trim()}%`;
+      query.andWhere((b) => b.where('anotacao.titulo', 'like', term).orWhere('anotacao.conteudo', 'like', term));
+    }
+
     const rows = await query.orderBy('anotacao.dataCriacao', 'desc');
     return rows;
+  },
+
+  async setShareToken(userId: number, id: number, token: string | null) {
+    const belongs = await knex(linkTable).where({ usuario_id: userId, anotacao_id: id }).first();
+    if (!belongs) return 0;
+    return knex(table).where({ id }).update({ share_token: token });
+  },
+
+  async findByShareToken(token: string): Promise<Anotacao | undefined> {
+    return knex<Anotacao>(table).where({ share_token: token }).first();
   },
 
   async listTrash(userId: number): Promise<Anotacao[]> {

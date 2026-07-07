@@ -1,4 +1,6 @@
 import bcrypt from 'bcrypt';
+import crypto from 'crypto';
+import sanitizeHtml from 'sanitize-html';
 import { ApiError } from '../../middlewares/error';
 import { anotacaoRepository } from './anotacao.repository';
 import { subscriptionService } from '../subscription/subscription.service';
@@ -35,13 +37,15 @@ const mapNote = (n: any, incluirConteudoProtegido = false) => {
     tags: tags,
     deletado: !!n.deletado,
     protegida,
+    shareToken: n.share_token || undefined,
+    share_token: undefined,
     senha: undefined // nunca expor o hash
   };
 };
 
 export const anotacaoService = {
-  async list(userId: number) {
-    const notes = await anotacaoRepository.listByUser(userId);
+  async list(userId: number, q?: string) {
+    const notes = await anotacaoRepository.listByUser(userId, false, q);
     return notes.map((n) => mapNote(n));
   },
 
@@ -151,6 +155,41 @@ export const anotacaoService = {
     const restored = await anotacaoRepository.restoreForUser(userId, id);
     if (!restored) throw new ApiError(404, 'Anotação não encontrada na lixeira', 'NOT_FOUND');
     return this.get(userId, id);
+  },
+
+  // === COMPARTILHAMENTO POR LINK ===
+  async share(userId: number, id: number) {
+    const note = await anotacaoRepository.getByIdForUser(userId, id);
+    if (!note) throw new ApiError(404, 'Anotação não encontrada', 'NOT_FOUND');
+    if (note.senha) throw new ApiError(400, 'Notas protegidas por senha não podem ser compartilhadas', 'PROTECTED_NOTE_SHARE');
+    if (note.share_token) return { shareToken: note.share_token };
+
+    const token = crypto.randomBytes(24).toString('hex');
+    await anotacaoRepository.setShareToken(userId, id, token);
+    return { shareToken: token };
+  },
+
+  async unshare(userId: number, id: number) {
+    const changed = await anotacaoRepository.setShareToken(userId, id, null);
+    if (!changed) throw new ApiError(404, 'Anotação não encontrada', 'NOT_FOUND');
+    return { shareToken: null };
+  },
+
+  // Visualização PÚBLICA (sem login): só notas com token válido, nunca protegidas/lixeira.
+  // Conteúdo passa por sanitização — remove scripts e atributos perigosos (anti-XSS).
+  async getPublic(token: string) {
+    const note = await anotacaoRepository.findByShareToken(token);
+    if (!note || note.deletado || note.senha) throw new ApiError(404, 'Nota não encontrada', 'NOT_FOUND');
+    return {
+      titulo: note.titulo,
+      cor: note.cor,
+      dataModificacao: note.dataModificacao,
+      conteudo: sanitizeHtml(note.conteudo || '', {
+        allowedTags: ['p', 'br', 'b', 'strong', 'i', 'em', 'u', 'ul', 'ol', 'li', 'span', 'mark', 'h1', 'h2', 'h3', 'label', 'input', 'div'],
+        allowedAttributes: { span: ['style'], mark: ['style'], input: ['type', 'checked', 'disabled'], li: ['data-checked'], ul: ['data-type'], div: [] },
+        allowedStyles: { '*': { 'color': [/^#[0-9a-fA-F]{3,8}$/, /^rgb/], 'background-color': [/^#[0-9a-fA-F]{3,8}$/, /^rgb/], 'font-size': [/^\d+px$/] } }
+      })
+    };
   },
 
   // Verifica a senha e, se correta, DEVOLVE a nota completa (com conteúdo).

@@ -5,9 +5,22 @@ export const anotacaoController = {
   async list(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = req.user!.id;
-      const notes = await anotacaoService.list(userId);
+      const q = typeof req.query.q === 'string' ? req.query.q : undefined;
+      const notes = await anotacaoService.list(userId, q);
       res.json(notes);
     } catch (e) { next(e); }
+  },
+
+  async share(req: Request, res: Response, next: NextFunction) {
+    try { res.json(await anotacaoService.share(req.user!.id, Number(req.params.id))); } catch (e) { next(e); }
+  },
+
+  async unshare(req: Request, res: Response, next: NextFunction) {
+    try { res.json(await anotacaoService.unshare(req.user!.id, Number(req.params.id))); } catch (e) { next(e); }
+  },
+
+  async getPublic(req: Request, res: Response, next: NextFunction) {
+    try { res.json(await anotacaoService.getPublic(String(req.params.token))); } catch (e) { next(e); }
   },
 
   async create(req: Request, res: Response, next: NextFunction) {

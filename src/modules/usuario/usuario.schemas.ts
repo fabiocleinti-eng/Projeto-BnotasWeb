@@ -36,7 +36,18 @@ export const forgotPasswordSchema = z.object({
   })
 });
 
-const codigo2FA = z.string().regex(/^\d{6}$/, "Código deve ter 6 dígitos");
+// Aceita código TOTP (6 dígitos) ou código de backup (8 caracteres hex)
+const codigo2FA = z.string().regex(/^[a-fA-F0-9]{6,8}$/, "Código inválido");
+
+export const updatePerfilSchema = z.object({
+  body: z.object({
+    nome: z.string().min(1).max(255).optional(),
+    sobrenome: z.string().min(1).max(255).optional(),
+    telefone: z.string().max(20).nullable().optional(),
+    bio: z.string().max(500).nullable().optional(),
+    avatarUrl: z.string().max(500).nullable().optional()
+  })
+});
 
 export const login2FASchema = z.object({
   body: z.object({

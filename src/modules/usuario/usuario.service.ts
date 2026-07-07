@@ -1,4 +1,5 @@
 import bcrypt from 'bcrypt';
+import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import nodemailer from 'nodemailer';
 import { authenticator } from 'otplib';
@@ -92,8 +93,20 @@ export const usuarioService = {
     }
 
     const secret = decrypt(user.totp_secret);
-    if (!authenticator.verify({ token: codigo, secret })) {
-      throw new ApiError(401, 'Código incorreto. Verifique o app autenticador.', 'INVALID_2FA_CODE');
+    const totpOk = authenticator.verify({ token: codigo, secret });
+
+    if (!totpOk) {
+      // Tenta como código de BACKUP (uso único: é removido após validar)
+      const hashes: string[] = user.totp_backup_codes ? JSON.parse(user.totp_backup_codes as string) : [];
+      let usado = -1;
+      for (let i = 0; i < hashes.length; i++) {
+        if (await bcrypt.compare(codigo, hashes[i])) { usado = i; break; }
+      }
+      if (usado === -1) {
+        throw new ApiError(401, 'Código incorreto. Verifique o app autenticador.', 'INVALID_2FA_CODE');
+      }
+      hashes.splice(usado, 1);
+      await usuarioRepository.update2FA(user.id, { totp_backup_codes: JSON.stringify(hashes) });
     }
 
     return this.buildLoginResponse(user);
@@ -125,8 +138,12 @@ export const usuarioService = {
       throw new ApiError(401, 'Código incorreto. Tente novamente.', 'INVALID_2FA_CODE');
     }
 
-    await usuarioRepository.update2FA(userId, { totp_enabled: true });
-    return { enabled: true };
+    // Gera 10 códigos de backup de uso único (mostrados UMA vez; só os hashes ficam no banco)
+    const backupCodes = Array.from({ length: 10 }, () => crypto.randomBytes(4).toString('hex'));
+    const hashes = await Promise.all(backupCodes.map((c) => bcrypt.hash(c, 8)));
+
+    await usuarioRepository.update2FA(userId, { totp_enabled: true, totp_backup_codes: JSON.stringify(hashes) });
+    return { enabled: true, backupCodes };
   },
 
   // Desativar exige senha da conta E código atual do app
@@ -152,6 +169,23 @@ export const usuarioService = {
     const user = await usuarioRepository.findById(userId);
     if (!user) throw new ApiError(404, 'Usuário não encontrado', 'USER_NOT_FOUND');
     return { enabled: !!user.totp_enabled };
+  },
+
+  // === PERFIL (persistido no servidor) ===
+  async getPerfil(userId: number) {
+    const user = await usuarioRepository.findById(userId);
+    if (!user) throw new ApiError(404, 'Usuário não encontrado', 'USER_NOT_FOUND');
+    return {
+      nome: user.nome, sobrenome: user.sobrenome, email: user.email,
+      telefone: user.telefone || null, bio: user.bio || null, avatarUrl: user.avatarUrl || null
+    };
+  },
+
+  async updatePerfil(userId: number, data: { nome?: string; sobrenome?: string; telefone?: string | null; bio?: string | null; avatarUrl?: string | null }) {
+    const user = await usuarioRepository.findById(userId);
+    if (!user) throw new ApiError(404, 'Usuário não encontrado', 'USER_NOT_FOUND');
+    await usuarioRepository.updateProfile(userId, data);
+    return this.getPerfil(userId);
   },
 
   async forgotPassword(email: string) {
