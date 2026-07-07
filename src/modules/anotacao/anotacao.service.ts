@@ -2,13 +2,20 @@ import bcrypt from 'bcrypt';
 import { ApiError } from '../../middlewares/error';
 import { anotacaoRepository } from './anotacao.repository';
 import { subscriptionService } from '../subscription/subscription.service';
+import { usuarioRepository } from '../usuario/usuario.repository';
 import { decrypt } from '../../utils/encryption';
 
 // Limite de notas do plano gratuito (ativas + lixeira)
 export const FREE_PLAN_NOTE_LIMIT = 10;
 
-// Converte do formato do Banco (snake_case) para o Frontend (camelCase)
-const mapNote = (n: any) => {
+// Marcador de nota protegida pela senha da CONTA (não guardamos cópia da senha:
+// a verificação usa sempre o hash atual do usuário — trocar a senha de login acompanha)
+const ACCOUNT_PASSWORD_MARKER = 'USER_PASSWORD';
+
+// Converte do formato do Banco (snake_case) para o Frontend (camelCase).
+// SEGURANÇA: notas protegidas saem SEM conteúdo — ele só é entregue após
+// a senha ser verificada (verify-password), nunca na listagem.
+const mapNote = (n: any, incluirConteudoProtegido = false) => {
   let tags: string[] = [];
   try {
     if (n.tags) {
@@ -17,22 +24,25 @@ const mapNote = (n: any) => {
   } catch (e) {
     tags = [];
   }
-  
+
+  const protegida = !!n.senha;
   return {
     ...n,
+    conteudo: protegida && !incluirConteudoProtegido ? '' : n.conteudo,
     favorita: !!n.favorita,
     dataLembrete: n.data_lembrete,
     qtdReagendamentos: n.qtd_reagendamentos || 0,
     tags: tags,
     deletado: !!n.deletado,
-    senha: n.senha ? '***' : undefined // Não retornar senha real, apenas indicar se existe
+    protegida,
+    senha: undefined // nunca expor o hash
   };
 };
 
 export const anotacaoService = {
   async list(userId: number) {
     const notes = await anotacaoRepository.listByUser(userId);
-    return notes.map(mapNote);
+    return notes.map((n) => mapNote(n));
   },
 
   async create(userId: number, data: { 
@@ -73,21 +83,55 @@ export const anotacaoService = {
     return mapNote(note);
   },
 
-  async update(userId: number, id: number, data: { 
-    titulo?: string; 
-    conteudo?: string; 
-    favorita?: boolean; 
-    cor?: string; 
+  // Verifica uma senha contra a proteção da nota (senha própria, senha da conta ou legado AES)
+  async checkNotePassword(userId: number, notaSenha: string, senhaDigitada: string): Promise<boolean> {
+    if (notaSenha === ACCOUNT_PASSWORD_MARKER) {
+      const user = await usuarioRepository.findById(userId);
+      return user ? bcrypt.compare(senhaDigitada, user.senha) : false;
+    }
+    if (notaSenha.startsWith('$2')) {
+      return bcrypt.compare(senhaDigitada, notaSenha);
+    }
+    // Formato antigo (AES "iv:conteudo")
+    try {
+      return senhaDigitada === decrypt(notaSenha);
+    } catch {
+      return false;
+    }
+  },
+
+  async update(userId: number, id: number, data: {
+    titulo?: string;
+    conteudo?: string;
+    favorita?: boolean;
+    cor?: string;
     dataLembrete?: string;
     tags?: string[];
     senha?: string | null;
+    usarSenhaConta?: boolean;
+    senhaAtualNota?: string;
   }) {
-    // Se tiver senha nova, guardar apenas o hash
+    const atual = await anotacaoRepository.getByIdForUser(userId, id);
+    if (!atual) throw new ApiError(404, 'Anotação não encontrada', 'NOT_FOUND');
+
     const updateData: any = { ...data };
-    if (data.senha !== undefined) {
-      updateData.senha = data.senha ? await bcrypt.hash(data.senha, 10) : null;
+    delete updateData.usarSenhaConta;
+    delete updateData.senhaAtualNota;
+
+    const querAlterarProtecao = data.senha !== undefined || data.usarSenhaConta === true;
+    if (querAlterarProtecao) {
+      // Alterar/remover proteção de nota JÁ protegida exige a senha atual da nota
+      if (atual.senha) {
+        const ok = await this.checkNotePassword(userId, atual.senha, data.senhaAtualNota || '');
+        if (!ok) throw new ApiError(401, 'Senha atual da nota incorreta', 'INVALID_NOTE_PASSWORD');
+      }
+      if (data.usarSenhaConta === true) {
+        updateData.senha = ACCOUNT_PASSWORD_MARKER; // protegida pela senha da conta
+      } else {
+        updateData.senha = data.senha ? await bcrypt.hash(data.senha, 10) : null;
+      }
     }
-    
+
     const updated = await anotacaoRepository.updateForUser(userId, id, updateData);
     if (!updated) throw new ApiError(404, 'Anotação não encontrada', 'NOT_FOUND');
     return this.get(userId, id);
@@ -100,7 +144,7 @@ export const anotacaoService = {
 
   async getTrash(userId: number) {
     const notes = await anotacaoRepository.listTrash(userId);
-    return notes.map(mapNote);
+    return notes.map((n) => mapNote(n));
   },
 
   async restore(userId: number, id: number) {
@@ -109,30 +153,25 @@ export const anotacaoService = {
     return this.get(userId, id);
   },
 
+  // Verifica a senha e, se correta, DEVOLVE a nota completa (com conteúdo).
+  // É o único caminho para obter o conteúdo de uma nota protegida.
   async verifyPassword(userId: number, id: number, senha: string) {
     const note = await anotacaoRepository.getByIdForUser(userId, id);
     if (!note) throw new ApiError(404, 'Anotação não encontrada', 'NOT_FOUND');
-    
+
     if (!note.senha) {
       throw new ApiError(400, 'Nota não está protegida', 'NOTE_NOT_PROTECTED');
     }
 
-    try {
-      // Formato novo: hash bcrypt ($2a$/$2b$...)
-      if (note.senha.startsWith('$2')) {
-        const valid = await bcrypt.compare(senha, note.senha);
-        return { valid };
-      }
-      // Formato antigo (AES "iv:conteudo"): compara e migra para bcrypt
-      const decryptedPassword = decrypt(note.senha);
-      const valid = senha === decryptedPassword;
-      if (valid) {
-        const newHash = await bcrypt.hash(senha, 10);
-        await anotacaoRepository.updateForUser(userId, id, { senha: newHash });
-      }
-      return { valid };
-    } catch (error) {
-      throw new ApiError(500, 'Erro ao verificar senha', 'PASSWORD_VERIFY_ERROR');
+    const valid = await this.checkNotePassword(userId, note.senha, senha);
+    if (!valid) return { valid: false };
+
+    // Migra formato antigo (AES) para bcrypt no primeiro acesso válido
+    if (note.senha !== ACCOUNT_PASSWORD_MARKER && !note.senha.startsWith('$2')) {
+      const newHash = await bcrypt.hash(senha, 10);
+      await anotacaoRepository.updateForUser(userId, id, { senha: newHash });
     }
+
+    return { valid: true, note: mapNote(note, true) };
   }
 };

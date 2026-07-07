@@ -26,7 +26,9 @@ export const updateAnotacaoSchema = z.object({
     cor: corHex.optional(),
     dataLembrete: dataValida.optional().nullable(),
     tags: z.array(z.string().max(50)).max(20).optional(),
-    senha: z.string().min(4).max(100).nullable().optional()
+    senha: z.string().min(4).max(100).nullable().optional(),
+    usarSenhaConta: z.boolean().optional(),   // proteger com a senha da CONTA (não guarda cópia)
+    senhaAtualNota: z.string().max(100).optional() // exigida para alterar/remover proteção existente
   }),
   params: z.object({ id: z.string().regex(/^\d+$/) })
 });
