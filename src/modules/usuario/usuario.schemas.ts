@@ -36,6 +36,26 @@ export const forgotPasswordSchema = z.object({
   })
 });
 
+const codigo2FA = z.string().regex(/^\d{6}$/, "Código deve ter 6 dígitos");
+
+export const login2FASchema = z.object({
+  body: z.object({
+    tempToken: z.string().min(1),
+    codigo: codigo2FA
+  })
+});
+
+export const enable2FASchema = z.object({
+  body: z.object({ codigo: codigo2FA })
+});
+
+export const disable2FASchema = z.object({
+  body: z.object({
+    senha: z.string().min(1, "Senha é obrigatória"),
+    codigo: codigo2FA
+  })
+});
+
 export const deleteAccountSchema = z.object({
   body: z.object({
     senha: z.string().min(1, "Senha é obrigatória para excluir a conta")

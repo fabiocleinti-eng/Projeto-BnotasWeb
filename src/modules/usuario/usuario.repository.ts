@@ -8,6 +8,8 @@ export type Usuario = {
   nome: string;
   sobrenome: string;
   telefone?: string | null; // <--- ADICIONADO
+  totp_secret?: string | null;   // segredo TOTP criptografado (2FA)
+  totp_enabled?: number | boolean; // 2FA ativado
 };
 
 const table = 'usuario';
@@ -45,6 +47,13 @@ export const usuarioRepository = {
 
   async updatePassword(id: number, senhaHash: string): Promise<void> {
     await knex(table).where({ id }).update({ senha: senhaHash });
+  },
+
+  async update2FA(id: number, data: { totp_secret?: string | null; totp_enabled?: boolean }): Promise<void> {
+    const upd: any = {};
+    if (data.totp_secret !== undefined) upd.totp_secret = data.totp_secret;
+    if (data.totp_enabled !== undefined) upd.totp_enabled = data.totp_enabled ? 1 : 0;
+    await knex(table).where({ id }).update(upd);
   },
 
   // Exclusão de conta (LGPD): apaga notas e o usuário.

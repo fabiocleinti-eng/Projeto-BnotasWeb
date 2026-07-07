@@ -1,6 +1,9 @@
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import nodemailer from 'nodemailer';
+import { authenticator } from 'otplib';
+import QRCode from 'qrcode';
+import { encrypt, decrypt } from '../../utils/encryption';
 import { usuarioRepository } from './usuario.repository';
 import { subscriptionRepository } from '../subscription/subscription.repository';
 import { ApiError } from '../../middlewares/error';
@@ -44,24 +47,111 @@ export const usuarioService = {
 
     const ok = await bcrypt.compare(senha, user.senha);
     if (!ok) throw new ApiError(401, 'Credenciais inválidas', 'INVALID_CREDENTIALS');
-    
+
+    // 2FA ativado: NÃO emite o token de acesso ainda. Devolve um token temporário
+    // (5 min, tipo '2fa') que só serve para completar o login com o código do app.
+    if (user.totp_enabled) {
+      const tempToken = jwt.sign({ sub: String(user.id), type: '2fa' }, env.JWT_SECRET, { expiresIn: '5m' });
+      return { requires2FA: true, tempToken };
+    }
+
+    return this.buildLoginResponse(user);
+  },
+
+  buildLoginResponse(user: { id: number; email: string; nome: string; sobrenome: string; telefone?: string | null }) {
     const token = jwt.sign(
-      { sub: String(user.id), email: user.email }, 
-      env.JWT_SECRET, 
+      { sub: String(user.id), email: user.email },
+      env.JWT_SECRET,
       { expiresIn: env.JWT_EXPIRES_IN as any }
     );
-
-    // Retorna telefone no login também, caso precise
-    return { 
-      token, 
-      user: { 
-        id: user.id, 
-        email: user.email, 
-        nome: user.nome, 
+    return {
+      token,
+      user: {
+        id: user.id,
+        email: user.email,
+        nome: user.nome,
         sobrenome: user.sobrenome,
-        telefone: user.telefone 
-      } 
+        telefone: user.telefone
+      }
     };
+  },
+
+  // Completa o login de quem tem 2FA: valida o token temporário + código do app
+  async login2FA(tempToken: string, codigo: string) {
+    let payload: any;
+    try {
+      payload = jwt.verify(tempToken, env.JWT_SECRET);
+    } catch {
+      throw new ApiError(401, 'Sessão de verificação expirada. Faça login novamente.', 'TEMP_TOKEN_EXPIRED');
+    }
+    if (payload.type !== '2fa') throw new ApiError(401, 'Token inválido', 'UNAUTHORIZED');
+
+    const user = await usuarioRepository.findById(Number(payload.sub));
+    if (!user || !user.totp_secret || !user.totp_enabled) {
+      throw new ApiError(401, 'Verificação inválida', 'UNAUTHORIZED');
+    }
+
+    const secret = decrypt(user.totp_secret);
+    if (!authenticator.verify({ token: codigo, secret })) {
+      throw new ApiError(401, 'Código incorreto. Verifique o app autenticador.', 'INVALID_2FA_CODE');
+    }
+
+    return this.buildLoginResponse(user);
+  },
+
+  // Passo 1 da ativação: gera o segredo e o QR code (2FA ainda NÃO fica ativo)
+  async setup2FA(userId: number) {
+    const user = await usuarioRepository.findById(userId);
+    if (!user) throw new ApiError(404, 'Usuário não encontrado', 'USER_NOT_FOUND');
+    if (user.totp_enabled) throw new ApiError(400, '2FA já está ativado', '2FA_ALREADY_ENABLED');
+
+    const secret = authenticator.generateSecret();
+    // Guarda criptografado: um vazamento do banco não expõe os segredos TOTP
+    await usuarioRepository.update2FA(userId, { totp_secret: encrypt(secret), totp_enabled: false });
+
+    const otpauth = authenticator.keyuri(user.email, 'BnotasWeb', secret);
+    const qrCode = await QRCode.toDataURL(otpauth);
+    return { qrCode, secret }; // secret exibido para digitação manual no app
+  },
+
+  // Passo 2: confirma com um código válido do app → 2FA ativado de verdade
+  async enable2FA(userId: number, codigo: string) {
+    const user = await usuarioRepository.findById(userId);
+    if (!user || !user.totp_secret) throw new ApiError(400, 'Gere o QR code primeiro', '2FA_SETUP_REQUIRED');
+    if (user.totp_enabled) throw new ApiError(400, '2FA já está ativado', '2FA_ALREADY_ENABLED');
+
+    const secret = decrypt(user.totp_secret);
+    if (!authenticator.verify({ token: codigo, secret })) {
+      throw new ApiError(401, 'Código incorreto. Tente novamente.', 'INVALID_2FA_CODE');
+    }
+
+    await usuarioRepository.update2FA(userId, { totp_enabled: true });
+    return { enabled: true };
+  },
+
+  // Desativar exige senha da conta E código atual do app
+  async disable2FA(userId: number, senha: string, codigo: string) {
+    const user = await usuarioRepository.findById(userId);
+    if (!user || !user.totp_enabled || !user.totp_secret) {
+      throw new ApiError(400, '2FA não está ativado', '2FA_NOT_ENABLED');
+    }
+
+    const okSenha = await bcrypt.compare(senha, user.senha);
+    if (!okSenha) throw new ApiError(401, 'Senha incorreta', 'INVALID_CREDENTIALS');
+
+    const secret = decrypt(user.totp_secret);
+    if (!authenticator.verify({ token: codigo, secret })) {
+      throw new ApiError(401, 'Código incorreto', 'INVALID_2FA_CODE');
+    }
+
+    await usuarioRepository.update2FA(userId, { totp_secret: null, totp_enabled: false });
+    return { enabled: false };
+  },
+
+  async get2FAStatus(userId: number) {
+    const user = await usuarioRepository.findById(userId);
+    if (!user) throw new ApiError(404, 'Usuário não encontrado', 'USER_NOT_FOUND');
+    return { enabled: !!user.totp_enabled };
   },
 
   async forgotPassword(email: string) {

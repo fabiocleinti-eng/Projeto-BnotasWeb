@@ -51,5 +51,29 @@ export const usuarioController = {
       const result = await usuarioService.deleteAccount(userId, senha);
       res.json(result);
     } catch (e) { next(e); }
+  },
+
+  // === 2FA ===
+  async login2FA(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { tempToken, codigo } = req.body;
+      res.json(await usuarioService.login2FA(tempToken, codigo));
+    } catch (e) { next(e); }
+  },
+
+  async setup2FA(req: Request, res: Response, next: NextFunction) {
+    try { res.json(await usuarioService.setup2FA(req.user!.id)); } catch (e) { next(e); }
+  },
+
+  async enable2FA(req: Request, res: Response, next: NextFunction) {
+    try { res.json(await usuarioService.enable2FA(req.user!.id, req.body.codigo)); } catch (e) { next(e); }
+  },
+
+  async disable2FA(req: Request, res: Response, next: NextFunction) {
+    try { res.json(await usuarioService.disable2FA(req.user!.id, req.body.senha, req.body.codigo)); } catch (e) { next(e); }
+  },
+
+  async get2FAStatus(req: Request, res: Response, next: NextFunction) {
+    try { res.json(await usuarioService.get2FAStatus(req.user!.id)); } catch (e) { next(e); }
   }
 };
