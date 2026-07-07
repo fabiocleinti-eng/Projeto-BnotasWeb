@@ -35,8 +35,13 @@ export const usuarioService = {
 
   async login(email: string, senha: string) {
     const user = await usuarioRepository.findByEmail(email);
-    if (!user) throw new ApiError(401, 'Credenciais inválidas', 'INVALID_CREDENTIALS');
-    
+    if (!user) {
+      // Compara contra hash fictício para igualar o tempo de resposta
+      // (evita descobrir e-mails cadastrados medindo a latência)
+      await bcrypt.compare(senha, '$2b$10$C6UzMDM.H6dfI/f/IKcEeO7ccnQY0jFCVvVIXNDXHuKji5Cwl92C6');
+      throw new ApiError(401, 'Credenciais inválidas', 'INVALID_CREDENTIALS');
+    }
+
     const ok = await bcrypt.compare(senha, user.senha);
     if (!ok) throw new ApiError(401, 'Credenciais inválidas', 'INVALID_CREDENTIALS');
     
@@ -61,18 +66,22 @@ export const usuarioService = {
 
   async forgotPassword(email: string) {
     const user = await usuarioRepository.findByEmail(email);
-    if (!user) throw new ApiError(404, 'Usuário não encontrado', 'USER_NOT_FOUND');
+
+    // Resposta idêntica exista o e-mail ou não: impede enumeração de usuários.
+    // Se o usuário não existe, simplesmente não envia nada.
+    if (!user) return { message: 'Se o e-mail existir, o link será enviado.' };
 
     if (!env.EMAIL_USER || !env.EMAIL_PASS) {
       console.error('ERRO: Variáveis de e-mail não configuradas no .env');
       throw new ApiError(500, 'Servidor de e-mail não configurado', 'EMAIL_CONFIG_ERROR');
     }
 
-    const token = jwt.sign({ sub: String(user.id), type: 'reset' }, env.JWT_SECRET, { expiresIn: '1h' });
-    
-    // CORREÇÃO 1: Codificar o token para garantir que caracteres especiais não quebrem na URL
+    // O segredo inclui o hash da senha atual: quando a senha muda, o token
+    // deixa de ser válido — ou seja, o link só funciona uma vez.
+    const token = jwt.sign({ sub: String(user.id), type: 'reset' }, env.JWT_SECRET + user.senha, { expiresIn: '1h' });
+
     const tokenCodificado = encodeURIComponent(token);
-    const link = `http://localhost:4200/reset-password?token=${tokenCodificado}`;
+    const link = `${env.APP_URL}/reset-password?token=${tokenCodificado}`;
 
     const transporter = nodemailer.createTransport({
       service: 'gmail',
@@ -85,7 +94,7 @@ export const usuarioService = {
         to: email,
         subject: 'Redefinição de Senha',
         html: `<p>Olá, ${user.nome || 'Usuário'}!</p>
-               <p>Clique no link abaixo para criar uma nova senha (válido por 1 hora):</p>
+               <p>Clique no link abaixo para criar uma nova senha (válido por 1 hora e apenas 1 uso):</p>
                <a href="${link}">REDEFINIR SENHA</a>`
       });
     } catch (error) {
@@ -93,25 +102,28 @@ export const usuarioService = {
       throw new ApiError(500, 'Falha ao enviar e-mail', 'EMAIL_SEND_ERROR');
     }
 
-    return { message: 'E-mail enviado' };
+    return { message: 'Se o e-mail existir, o link será enviado.' };
   },
 
   async resetPassword(token: string, newPass: string) {
     try {
-      // 1. Verifica o token
-      const payload = jwt.verify(token, env.JWT_SECRET) as any;
-      
-      if (payload.type !== 'reset') {
-        throw new ApiError(400, 'Tipo de token inválido', 'INVALID_TOKEN_TYPE');
+      // 1. Decodifica (sem verificar) só para descobrir o usuário
+      const decoded = jwt.decode(token) as any;
+      if (!decoded || decoded.type !== 'reset' || !decoded.sub) {
+        throw new ApiError(400, 'Link inválido ou corrompido.', 'TOKEN_MALFORMED');
       }
-      
+
       // 2. Busca o usuário
-      const user = await usuarioRepository.findById(Number(payload.sub));
+      const user = await usuarioRepository.findById(Number(decoded.sub));
       if (!user) {
         throw new ApiError(404, 'Usuário não encontrado', 'USER_NOT_FOUND');
       }
 
-      // 3. Atualiza senha
+      // 3. Verifica a assinatura com o segredo derivado do hash atual.
+      // Se a senha já foi trocada (link usado), a verificação falha.
+      jwt.verify(token, env.JWT_SECRET + user.senha);
+
+      // 4. Atualiza senha
       const hash = await bcrypt.hash(newPass, 10);
       await usuarioRepository.updatePassword(user.id, hash);
 
@@ -137,5 +149,29 @@ export const usuarioService = {
       // Erro genérico para outros casos
       throw new ApiError(400, 'Não foi possível redefinir a senha.', 'RESET_ERROR');
     }
+  },
+
+  async changePassword(userId: number, senhaAtual: string, novaSenha: string) {
+    const user = await usuarioRepository.findById(userId);
+    if (!user) throw new ApiError(404, 'Usuário não encontrado', 'USER_NOT_FOUND');
+
+    const ok = await bcrypt.compare(senhaAtual, user.senha);
+    if (!ok) throw new ApiError(401, 'Senha atual incorreta', 'INVALID_CURRENT_PASSWORD');
+
+    const hash = await bcrypt.hash(novaSenha, 10);
+    await usuarioRepository.updatePassword(user.id, hash);
+    return { message: 'Senha alterada com sucesso.' };
+  },
+
+  // Exclusão de conta (LGPD - direito de eliminação). Exige a senha para confirmar.
+  async deleteAccount(userId: number, senha: string) {
+    const user = await usuarioRepository.findById(userId);
+    if (!user) throw new ApiError(404, 'Usuário não encontrado', 'USER_NOT_FOUND');
+
+    const ok = await bcrypt.compare(senha, user.senha);
+    if (!ok) throw new ApiError(401, 'Senha incorreta', 'INVALID_CREDENTIALS');
+
+    await usuarioRepository.deleteById(userId);
+    return { message: 'Conta e todos os dados excluídos.' };
   }
 };

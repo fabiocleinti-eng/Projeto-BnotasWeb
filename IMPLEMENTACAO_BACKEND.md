@@ -20,10 +20,10 @@ Todas as funcionalidades do guia foram implementadas com sucesso:
 - Campo `senha` adicionado na tabela `anotacao`
 - Criptografia usando AES-256-CBC
 - Utilitário: `src/utils/encryption.ts`
-- Endpoint: `POST /api/anotacoes/:id/verify-password`
+- Endpoint: `POST /api/anotacoes/:id/verify-password` (body: `{ "senha": "..." }` — validado com `verifyPasswordSchema`)
 
 ### 3. ✅ Lixeira Protegida (Soft Delete)
-- Campo `deletado` e `dataExclusao` adicionados
+- Campo `deletado` na tabela `anotacao` (sem `dataExclusao`; ordenação por `dataModificacao`)
 - Endpoints:
   - `GET /api/anotacoes/trash` - Listar lixeira
   - `POST /api/anotacoes/:id/restore` - Restaurar nota
@@ -89,7 +89,6 @@ src/
 1. **`anotacao`** - Atualizada com:
    - `tags` (JSON)
    - `deletado` (TINYINT)
-   - `dataExclusao` (TIMESTAMP)
    - `senha` (VARCHAR 500)
 
 2. **`subscription`** - Nova tabela:
@@ -132,7 +131,7 @@ Execute o arquivo `database/migrations.sql` no seu banco MySQL.
 
 ### Criptografia:
 - **Algoritmo**: AES-256-CBC
-- **Chave**: Configurada via `ENCRYPTION_KEY` no `.env`
+- **Chave**: `ENCRYPTION_KEY` no `.env` — se for 64 caracteres hex, usada como 32 bytes; senão derivada com SHA-256 (32 bytes)
 - **IV**: Gerado aleatoriamente para cada criptografia
 
 ### Autenticação:
@@ -141,6 +140,7 @@ Execute o arquivo `database/migrations.sql` no seu banco MySQL.
 
 ### Middleware de Features:
 - `requireFeature('feature_name')` - Verifica se usuário tem acesso à feature
+- Mensagens: "Esta funcionalidade requer plano Premium..." (sem plano/free) ou "Funcionalidade não disponível no seu plano atual." (plano sem a feature)
 - Exemplo: `requireFeature('protected_notes')`
 
 ---
@@ -157,8 +157,9 @@ DB_USER=root
 DB_PASSWORD=sua-senha
 DB_NAME=bnotasweb
 
-# NOVA
+# NOVA (recomendado em produção: 64 caracteres hex = 32 bytes)
 ENCRYPTION_KEY=seu-key-de-criptografia-32-caracteres-hex
+# Ou qualquer string; será derivada com SHA-256 para 32 bytes
 ```
 
 **⚠️ IMPORTANTE**: Em produção, use chaves seguras e diferentes!
@@ -206,7 +207,7 @@ POST /api/anotacoes/1/restore
 - [x] Criar estrutura de pastas
 - [x] Criar utilitário de criptografia
 - [x] Criar modelos/repositories de Subscription e Plan
-- [x] Atualizar modelo de Anotacao (tags, senha, deletado, dataExclusao)
+- [x] Atualizar modelo de Anotacao (tags, senha, deletado)
 - [x] Criar middleware de subscription
 - [x] Criar controller e service de subscriptions
 - [x] Atualizar controller e service de anotacoes
@@ -237,6 +238,8 @@ POST /api/anotacoes/1/restore
 ---
 
 **Implementação concluída com sucesso! 🎉**
+
+
 
 
 

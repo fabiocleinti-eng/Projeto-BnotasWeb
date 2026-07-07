@@ -33,5 +33,23 @@ export const usuarioController = {
       await usuarioService.resetPassword(token, newPassword);
       res.json({ message: 'Senha alterada.' });
     } catch (e) { next(e); }
+  },
+
+  async changePassword(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = req.user!.id;
+      const { senhaAtual, novaSenha } = req.body;
+      const result = await usuarioService.changePassword(userId, senhaAtual, novaSenha);
+      res.json(result);
+    } catch (e) { next(e); }
+  },
+
+  async deleteAccount(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = req.user!.id;
+      const { senha } = req.body;
+      const result = await usuarioService.deleteAccount(userId, senha);
+      res.json(result);
+    } catch (e) { next(e); }
   }
 };

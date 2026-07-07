@@ -4,7 +4,7 @@ import { env } from '../config/env';
 import { ApiError } from './error';
 
 export type AuthPayload = {
-  sub: number; // user id
+  sub: number | string; // user id (JWT pode devolver string)
   email: string;
   iat?: number;
   exp?: number;
@@ -25,7 +25,9 @@ export const auth = (req: Request, _res: Response, next: NextFunction) => {
   if (type !== 'Bearer' || !token) return next(new ApiError(401, 'Token inválido', 'UNAUTHORIZED'));
   try {
     const payload = jwt.verify(token, env.JWT_SECRET) as AuthPayload;
-    req.user = { id: payload.sub, email: payload.email };
+    const userId = typeof payload.sub === 'string' ? Number(payload.sub) : payload.sub;
+    if (!userId || Number.isNaN(userId)) return next(new ApiError(401, 'Token inválido', 'UNAUTHORIZED'));
+    req.user = { id: userId, email: payload.email };
     return next();
   } catch {
     return next(new ApiError(401, 'Token inválido ou expirado', 'UNAUTHORIZED'));

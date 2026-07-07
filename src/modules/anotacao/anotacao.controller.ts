@@ -13,15 +13,18 @@ export const anotacaoController = {
   async create(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = req.user!.id;
-      const { titulo, conteudo, favorita, cor, dataLembrete, tags, senha } = req.body;
+      const body = req.body as Record<string, unknown>;
+      const titulo = (body.titulo ?? body.title ?? '') as string;
+      const conteudo = (body.conteudo ?? body.content ?? '') as string;
+      const { favorita, cor, dataLembrete, tags, senha } = body;
       const note = await anotacaoService.create(userId, { 
         titulo, 
         conteudo, 
-        favorita, 
-        cor, 
-        dataLembrete,
-        tags,
-        senha
+        favorita: favorita as boolean | undefined, 
+        cor: cor as string | undefined, 
+        dataLembrete: dataLembrete as string | undefined,
+        tags: tags as string[] | undefined,
+        senha: senha as string | undefined
       });
       res.status(201).json(note);
     } catch (e) { next(e); }
@@ -40,15 +43,18 @@ export const anotacaoController = {
     try {
       const userId = req.user!.id;
       const id = Number(req.params.id);
-      const { titulo, conteudo, favorita, cor, dataLembrete, tags, senha } = req.body;
+      const body = req.body as Record<string, unknown>;
+      const titulo = body.titulo !== undefined ? body.titulo : body.title;
+      const conteudo = body.conteudo !== undefined ? body.conteudo : body.content;
+      const { favorita, cor, dataLembrete, tags, senha } = body;
       const note = await anotacaoService.update(userId, id, { 
-        titulo, 
-        conteudo, 
-        favorita, 
-        cor, 
-        dataLembrete,
-        tags,
-        senha
+        titulo: titulo as string | undefined, 
+        conteudo: conteudo as string | undefined, 
+        favorita: favorita as boolean | undefined, 
+        cor: cor as string | undefined, 
+        dataLembrete: dataLembrete as string | undefined,
+        tags: tags as string[] | undefined,
+        senha: senha as string | null | undefined
       });
       res.json(note);
     } catch (e) { next(e); }

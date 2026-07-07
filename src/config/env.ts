@@ -11,11 +11,14 @@ const toArray = (value?: string): string[] => {
 const envSchema = z.object({
   NODE_ENV: z.string().default('development'),
   PORT: z.coerce.number().default(3000),
-  
+
   // JWT
   JWT_SECRET: z.string().default('dev-secret'),
   JWT_EXPIRES_IN: z.string().default('24h'),
-  
+
+  // URL do front-end (links de e-mail: reset de senha, lembretes)
+  APP_URL: z.string().default('http://localhost:4200'),
+
   // Banco de Dados
   DB_HOST: z.string().default('localhost'),
   DB_PORT: z.coerce.number().default(3306),
@@ -35,3 +38,13 @@ const envSchema = z.object({
 });
 
 export const env = envSchema.parse(process.env);
+
+// Em produção, não permitir segredos padrão de desenvolvimento
+if (env.NODE_ENV === 'production') {
+  if (env.JWT_SECRET === 'dev-secret' || env.JWT_SECRET.length < 32) {
+    throw new Error('JWT_SECRET fraco ou ausente. Defina um segredo com pelo menos 32 caracteres no .env');
+  }
+  if (env.ENCRYPTION_KEY === 'dev-encryption-key-change-in-production-32chars') {
+    throw new Error('ENCRYPTION_KEY padrão detectada. Defina uma chave própria no .env');
+  }
+}

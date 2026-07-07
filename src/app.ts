@@ -5,14 +5,15 @@ import morgan from 'morgan';
 import { env } from './config/env';
 import routes from './routes';
 import { errorHandler } from './middlewares/error';
+import { apiLimiter } from './middlewares/rate-limit';
 import { knex } from './db/knex';
 
 const app = express();
 
 app.use(helmet());
 app.use(cors({ origin: env.CORS_ORIGINS }));
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ limit: '10mb', extended: true }));
+app.use(express.json({ limit: '2mb' }));
+app.use(express.urlencoded({ limit: '2mb', extended: true }));
 app.use(morgan(env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 
 app.get('/health', async (_req, res) => {
@@ -24,7 +25,7 @@ app.get('/health', async (_req, res) => {
   }
 });
 
-app.use('/api', routes);
+app.use('/api', apiLimiter, routes);
 
 // Swagger (served inside routes at /docs and /docs.json)
 

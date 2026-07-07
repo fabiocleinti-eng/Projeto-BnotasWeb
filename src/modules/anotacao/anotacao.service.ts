@@ -1,6 +1,11 @@
+import bcrypt from 'bcrypt';
 import { ApiError } from '../../middlewares/error';
 import { anotacaoRepository } from './anotacao.repository';
-import { encrypt, decrypt } from '../../utils/encryption';
+import { subscriptionService } from '../subscription/subscription.service';
+import { decrypt } from '../../utils/encryption';
+
+// Limite de notas do plano gratuito (ativas + lixeira)
+export const FREE_PLAN_NOTE_LIMIT = 10;
 
 // Converte do formato do Banco (snake_case) para o Frontend (camelCase)
 const mapNote = (n: any) => {
@@ -39,12 +44,25 @@ export const anotacaoService = {
     tags?: string[];
     senha?: string;
   }) {
-    // Se tiver senha, criptografar
-    const encryptedPassword = data.senha ? encrypt(data.senha) : null;
-    
+    // Limite do plano gratuito é aplicado AQUI no servidor — o front apenas exibe o contador.
+    const hasUnlimited = await subscriptionService.hasFeature(userId, 'unlimited_notes');
+    if (!hasUnlimited) {
+      const count = await anotacaoRepository.countByUser(userId);
+      if (count >= FREE_PLAN_NOTE_LIMIT) {
+        throw new ApiError(
+          403,
+          `Você atingiu o limite de ${FREE_PLAN_NOTE_LIMIT} notas do plano gratuito (a lixeira também conta). Esvazie a lixeira ou faça upgrade para notas ilimitadas.`,
+          'FREE_PLAN_LIMIT_REACHED'
+        );
+      }
+    }
+
+    // Se tiver senha, guardar apenas o hash (não é possível recuperar a senha original)
+    const hashedPassword = data.senha ? await bcrypt.hash(data.senha, 10) : null;
+
     const note = await anotacaoRepository.createForUser(userId, {
       ...data,
-      senha: encryptedPassword
+      senha: hashedPassword
     });
     return mapNote(note);
   },
@@ -64,10 +82,10 @@ export const anotacaoService = {
     tags?: string[];
     senha?: string | null;
   }) {
-    // Se tiver senha nova, criptografar
+    // Se tiver senha nova, guardar apenas o hash
     const updateData: any = { ...data };
     if (data.senha !== undefined) {
-      updateData.senha = data.senha ? encrypt(data.senha) : null;
+      updateData.senha = data.senha ? await bcrypt.hash(data.senha, 10) : null;
     }
     
     const updated = await anotacaoRepository.updateForUser(userId, id, updateData);
@@ -100,8 +118,19 @@ export const anotacaoService = {
     }
 
     try {
+      // Formato novo: hash bcrypt ($2a$/$2b$...)
+      if (note.senha.startsWith('$2')) {
+        const valid = await bcrypt.compare(senha, note.senha);
+        return { valid };
+      }
+      // Formato antigo (AES "iv:conteudo"): compara e migra para bcrypt
       const decryptedPassword = decrypt(note.senha);
-      return { valid: senha === decryptedPassword };
+      const valid = senha === decryptedPassword;
+      if (valid) {
+        const newHash = await bcrypt.hash(senha, 10);
+        await anotacaoRepository.updateForUser(userId, id, { senha: newHash });
+      }
+      return { valid };
     } catch (error) {
       throw new ApiError(500, 'Erro ao verificar senha', 'PASSWORD_VERIFY_ERROR');
     }

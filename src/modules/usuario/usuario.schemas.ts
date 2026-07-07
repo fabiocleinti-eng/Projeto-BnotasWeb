@@ -30,5 +30,24 @@ export const resetPasswordSchema = z.object({
   })
 });
 
+export const forgotPasswordSchema = z.object({
+  body: z.object({
+    email: z.string().email("Email inválido")
+  })
+});
+
+export const deleteAccountSchema = z.object({
+  body: z.object({
+    senha: z.string().min(1, "Senha é obrigatória para excluir a conta")
+  })
+});
+
+export const changePasswordSchema = z.object({
+  body: z.object({
+    senhaAtual: z.string().min(1, "Senha atual é obrigatória"),
+    novaSenha: senhaForte
+  })
+});
+
 export type CreateUsuarioInput = z.infer<typeof createUsuarioSchema>['body'];
 export type LoginInput = z.infer<typeof loginSchema>['body'];

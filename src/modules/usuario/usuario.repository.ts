@@ -45,5 +45,14 @@ export const usuarioRepository = {
 
   async updatePassword(id: number, senhaHash: string): Promise<void> {
     await knex(table).where({ id }).update({ senha: senhaHash });
+  },
+
+  // Exclusão de conta (LGPD): apaga notas e o usuário.
+  // As FKs com ON DELETE CASCADE limpam usuario_anotacao e subscription.
+  async deleteById(id: number): Promise<void> {
+    await knex.transaction(async (trx) => {
+      await trx('anotacao').where({ usuario_id: id }).del();
+      await trx(table).where({ id }).del();
+    });
   }
 };
