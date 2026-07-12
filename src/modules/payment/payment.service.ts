@@ -50,7 +50,9 @@ export const paymentService = {
           failure: `${env.APP_URL}/dashboard?pagamento=falha`,
           pending: `${env.APP_URL}/dashboard?pagamento=pendente`
         },
-        auto_return: 'approved',
+        // MP só aceita auto_return com URL pública (https); em localhost o
+        // usuário volta pelo botão "Voltar ao site" do checkout
+        ...(env.APP_URL.startsWith('https') ? { auto_return: 'approved' } : {}),
         notification_url: env.MP_WEBHOOK_URL ? `${env.MP_WEBHOOK_URL}/api/payments/webhook` : undefined,
         statement_descriptor: 'BNOTASWEB'
       }
