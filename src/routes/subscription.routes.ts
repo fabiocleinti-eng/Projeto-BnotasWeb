@@ -4,9 +4,11 @@ import { auth } from '../middlewares/auth';
 import { validate } from '../middlewares/validate';
 import { subscriptionController } from '../modules/subscription/subscription.controller';
 
+// SEGURANÇA: o upgrade "direto" agora só aceita voltar ao plano gratuito.
+// Planos pagos passam obrigatoriamente pelo pagamento (/payments/checkout).
 const upgradeSchema = z.object({
   body: z.object({
-    planId: z.enum(['free', 'premium', 'pro'])
+    planId: z.enum(['free'])
   })
 });
 

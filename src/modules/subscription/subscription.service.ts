@@ -1,8 +1,8 @@
 import { subscriptionRepository } from './subscription.repository';
 import { ApiError } from '../../middlewares/error';
 
-// Planos pré-definidos
-const PLANS = {
+// Planos pré-definidos (exportado: o módulo de pagamento usa preços e features daqui)
+export const PLANS = {
   free: {
     id: 'free',
     name: 'Gratuito',
@@ -41,6 +41,15 @@ const PLANS = {
   }
 };
 
+// Assinatura paga vencida (endDate no passado) volta a expirada automaticamente
+async function expireIfDue(sub: any) {
+  if (sub && sub.status === 'active' && sub.planId !== 'free' && sub.endDate && new Date(sub.endDate) < new Date()) {
+    await subscriptionRepository.update(sub.userId, { status: 'expired' });
+    sub.status = 'expired';
+  }
+  return sub;
+}
+
 export const subscriptionService = {
   async getCurrent(userId: number) {
     let subscription = await subscriptionRepository.findByUserId(userId);
@@ -55,7 +64,7 @@ export const subscriptionService = {
       });
     }
 
-    return subscription;
+    return expireIfDue(subscription);
   },
 
   async upgrade(userId: number, planId: string) {
@@ -117,8 +126,9 @@ export const subscriptionService = {
   },
 
   async hasFeature(userId: number, feature: string): Promise<boolean> {
-    const subscription = await subscriptionRepository.findByUserId(userId);
-    
+    let subscription = await subscriptionRepository.findByUserId(userId);
+    subscription = await expireIfDue(subscription);
+
     if (!subscription || subscription.planId === 'free' || subscription.status !== 'active') {
       return false;
     }

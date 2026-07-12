@@ -66,13 +66,15 @@ export const subscriptionRepository = {
     status?: 'active' | 'cancelled' | 'expired';
     features?: string[];
     startDate?: Date;
+    endDate?: Date | null;
   }): Promise<void> {
     const updateData: any = {};
-    
+
     if (data.planId !== undefined) updateData.planId = data.planId;
     if (data.status !== undefined) updateData.status = data.status;
     if (data.features !== undefined) updateData.features = JSON.stringify(data.features);
     if (data.startDate !== undefined) updateData.startDate = data.startDate;
+    if (data.endDate !== undefined) updateData.endDate = data.endDate;
 
     await knex(subscriptionTable)
       .where({ userId })

@@ -34,7 +34,13 @@ const envSchema = z.object({
   EMAIL_PASS: z.string().optional(),
 
   // --- ENCRYPTION ---
-  ENCRYPTION_KEY: z.string().default('dev-encryption-key-change-in-production-32chars')
+  ENCRYPTION_KEY: z.string().default('dev-encryption-key-change-in-production-32chars'),
+
+  // --- MERCADO PAGO ---
+  // Em desenvolvimento use o Access Token de TESTE (TEST-...); em produção o APP_USR-...
+  MP_ACCESS_TOKEN: z.string().optional(),
+  // URL pública da API para o webhook (ex.: https://api.seudominio.com — em dev use ngrok, opcional)
+  MP_WEBHOOK_URL: z.string().optional()
 });
 
 export const env = envSchema.parse(process.env);
