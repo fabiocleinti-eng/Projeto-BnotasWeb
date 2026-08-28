@@ -3,12 +3,19 @@ import { z } from 'zod';
 // Cor deve ser um hex válido (#fff, #fff9c4, etc.) — evita injeção de CSS arbitrário
 const corHex = z.string().regex(/^#[0-9a-fA-F]{3,8}$/, 'Cor inválida');
 
+// O título vira o assunto do e-mail de lembrete: quebra de linha ali permitiria
+// injetar cabeçalhos (um Bcc oculto, por exemplo). Também não faz sentido no título.
+const tituloNota = z.string().max(255).refine(
+  (v) => !/[\r\n\t\0]/.test(v),
+  'O título não pode conter quebras de linha'
+);
+
 // Aceita tanto ISO completo quanto o formato do input datetime-local (2026-07-06T15:30)
 const dataValida = z.string().refine((v) => !Number.isNaN(Date.parse(v)), 'Data inválida');
 
 export const createAnotacaoSchema = z.object({
   body: z.object({
-    titulo: z.string().max(255).optional().default(''),
+    titulo: tituloNota.optional().default(''),
     conteudo: z.string().max(200_000).optional().default(''),
     favorita: z.boolean().optional(),
     cor: corHex.optional(),
@@ -20,7 +27,7 @@ export const createAnotacaoSchema = z.object({
 
 export const updateAnotacaoSchema = z.object({
   body: z.object({
-    titulo: z.string().max(255).optional(),
+    titulo: tituloNota.optional(),
     conteudo: z.string().max(200_000).optional(),
     favorita: z.boolean().optional(),
     cor: corHex.optional(),

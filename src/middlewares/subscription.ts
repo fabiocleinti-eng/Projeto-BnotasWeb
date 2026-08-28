@@ -1,5 +1,6 @@
 import { NextFunction, Request, Response } from 'express';
 import { subscriptionRepository } from '../modules/subscription/subscription.repository';
+import { subscriptionService } from '../modules/subscription/subscription.service';
 import { ApiError } from './error';
 
 // Verificar se usuário tem feature premium (mensagens alinhadas ao guia)
@@ -9,6 +10,9 @@ export function requireFeature(feature: string) {
       if (!req.user) {
         return next(new ApiError(401, 'Usuário não autenticado', 'UNAUTHORIZED'));
       }
+
+      // Admin passa por todos os gates (conta de testes)
+      if (await subscriptionService.isAdmin(req.user.id)) return next();
 
       const subscription = await subscriptionRepository.findByUserId(req.user.id);
 

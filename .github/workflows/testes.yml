@@ -1,0 +1,45 @@
+name: Testes de segurança
+
+# Roda sozinho a cada envio de código e em cada pull request.
+# Também pode ser disparado à mão pela aba "Actions" do GitHub.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  seguranca:
+    runs-on: ubuntu-latest
+
+    # Banco MySQL temporário só para os testes
+    services:
+      mysql:
+        image: mysql:8
+        env:
+          MYSQL_ROOT_PASSWORD: senha_de_teste
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -psenha_de_teste"
+          --health-interval=10s --health-timeout=5s --health-retries=10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Rodar a bateria de segurança
+        env:
+          DB_HOST: 127.0.0.1
+          DB_PORT: '3306'
+          DB_USER: root
+          DB_PASSWORD: senha_de_teste
+          JWT_SECRET: segredo-de-ci-com-mais-de-32-caracteres-123456
+          ENCRYPTION_KEY: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+        run: npm test

@@ -9,6 +9,7 @@ import {
   changePasswordSchema,
   forgotPasswordSchema,
   deleteAccountSchema,
+  verificarEmailSchema,
   login2FASchema,
   enable2FASchema,
   disable2FASchema,
@@ -29,6 +30,11 @@ router.put('/usuarios/senha', auth, authLimiter, validate(changePasswordSchema),
 
 // Excluir conta e todos os dados (LGPD) — exige a senha para confirmar
 router.delete('/usuarios/me', auth, authLimiter, validate(deleteAccountSchema), usuarioController.deleteAccount);
+
+// === VERIFICAÇÃO DE E-MAIL ===
+// Confirmar é público (o link chega por e-mail); reenviar exige estar logado.
+router.post('/verificar-email', authLimiter, validate(verificarEmailSchema), usuarioController.verificarEmail);
+router.post('/usuarios/reenviar-verificacao', auth, authLimiter, usuarioController.reenviarVerificacao);
 
 // === PERFIL (persistido no servidor) ===
 router.get('/usuarios/perfil', auth, usuarioController.getPerfil);

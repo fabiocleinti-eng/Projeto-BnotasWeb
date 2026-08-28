@@ -43,6 +43,26 @@ const mapNote = (n: any, incluirConteudoProtegido = false) => {
   };
 };
 
+// Converte o HTML do editor em Markdown legível (usado na exportação)
+function htmlParaMarkdown(html: string): string {
+  if (!html) return '';
+  return html
+    .replace(/<(strong|b)>(.*?)<\/\1>/gi, '**$2**')
+    .replace(/<(em|i)>(.*?)<\/\1>/gi, '*$2*')
+    .replace(/<u>(.*?)<\/u>/gi, '_$1_')
+    .replace(/<li[^>]*data-checked="true"[^>]*>/gi, '\n- [x] ')
+    .replace(/<li[^>]*data-checked="false"[^>]*>/gi, '\n- [ ] ')
+    .replace(/<li[^>]*>/gi, '\n- ')
+    .replace(/<\/p>|<br\s*\/?>/gi, '\n')
+    .replace(/<[^>]+>/g, '')          // remove as tags restantes
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 export const anotacaoService = {
   async list(userId: number, q?: string) {
     const notes = await anotacaoRepository.listByUser(userId, false, q);
@@ -69,6 +89,15 @@ export const anotacaoService = {
           'FREE_PLAN_LIMIT_REACHED'
         );
       }
+    }
+
+    // Proteger nota é recurso pago — vale tanto ao criar quanto ao editar
+    if (data.senha && !(await subscriptionService.hasFeature(userId, 'protected_notes'))) {
+      throw new ApiError(
+        403,
+        'Notas protegidas por senha são um recurso dos planos pagos. Faça upgrade para usar.',
+        'FEATURE_REQUIRES_PREMIUM'
+      );
     }
 
     // Se tiver senha, guardar apenas o hash (não é possível recuperar a senha original)
@@ -124,6 +153,17 @@ export const anotacaoService = {
 
     const querAlterarProtecao = data.senha !== undefined || data.usarSenhaConta === true;
     if (querAlterarProtecao) {
+      // Proteger nota é recurso pago — validado AQUI no servidor, não só na tela.
+      // Remover a proteção continua livre (quem cancela o plano não fica preso).
+      const estaDefinindoSenha = data.usarSenhaConta === true || !!data.senha;
+      if (estaDefinindoSenha && !(await subscriptionService.hasFeature(userId, 'protected_notes'))) {
+        throw new ApiError(
+          403,
+          'Notas protegidas por senha são um recurso dos planos pagos. Faça upgrade para usar.',
+          'FEATURE_REQUIRES_PREMIUM'
+        );
+      }
+
       // Alterar/remover proteção de nota JÁ protegida exige a senha atual da nota
       if (atual.senha) {
         const ok = await this.checkNotePassword(userId, atual.senha, data.senhaAtualNota || '');
@@ -155,6 +195,21 @@ export const anotacaoService = {
     const restored = await anotacaoRepository.restoreForUser(userId, id);
     if (!restored) throw new ApiError(404, 'Anotação não encontrada na lixeira', 'NOT_FOUND');
     return this.get(userId, id);
+  },
+
+  // === EXPORTAÇÃO (recurso pago — o gate fica na rota, via requireFeature) ===
+  // Gera o Markdown no servidor: notas protegidas entram só como marcador,
+  // porque o conteúdo delas exige a senha.
+  async exportMarkdown(userId: number) {
+    const notes = await anotacaoRepository.listByUser(userId);
+    const corpo = notes.map((n) => {
+      const titulo = n.titulo || 'Sem título';
+      if (n.senha) return `# ${titulo}\n\n_(nota protegida — conteúdo não exportado)_`;
+      return `# ${titulo}\n\n${htmlParaMarkdown(String(n.conteudo || ''))}`;
+    }).join('\n\n---\n\n');
+
+    const cabecalho = `# Minhas notas — BnotasWeb\n\nExportado em ${new Date().toLocaleString('pt-BR')} · ${notes.length} nota(s)\n\n---\n\n`;
+    return cabecalho + corpo + '\n';
   },
 
   // === COMPARTILHAMENTO POR LINK ===

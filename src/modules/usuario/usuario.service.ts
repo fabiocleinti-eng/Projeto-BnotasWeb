@@ -1,13 +1,14 @@
 import bcrypt from 'bcrypt';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
-import nodemailer from 'nodemailer';
+import { enviarEmail, layoutEmail, emailConfigurado, escaparHtml } from '../../utils/mailer';
 import { authenticator } from 'otplib';
 import QRCode from 'qrcode';
 import { encrypt, decrypt } from '../../utils/encryption';
 import { usuarioRepository } from './usuario.repository';
 import { subscriptionRepository } from '../subscription/subscription.repository';
 import { ApiError } from '../../middlewares/error';
+import { ACCESS_TOKEN_TYPE } from '../../middlewares/auth';
 import { env } from '../../config/env';
 
 export const usuarioService = {
@@ -33,8 +34,60 @@ export const usuarioService = {
       status: 'active',
       features: []
     });
-    
-    return { id: user.id, email: user.email, nome: user.nome };
+
+    // Envia a confirmação do endereço. Uma falha no envio não invalida o cadastro:
+    // a conta é criada e o usuário pode pedir o reenvio depois.
+    try {
+      await this.enviarVerificacao(user.id, user.email, user.nome);
+    } catch (e) {
+      console.error('Falha ao enviar verificação de e-mail:', e);
+    }
+
+    return { id: user.id, email: user.email, nome: user.nome, emailVerificado: false };
+  },
+
+  // === VERIFICAÇÃO DE E-MAIL ===
+
+  /** Gera um token de uso único (24h) e manda o link de confirmação. */
+  async enviarVerificacao(userId: number, email: string, nome?: string) {
+    const token = crypto.randomBytes(32).toString('hex');
+    const expira = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    await usuarioRepository.definirTokenVerificacao(userId, token, expira);
+
+    const link = `${env.APP_URL}/verificar-email?token=${token}`;
+    await enviarEmail({
+      to: email,
+      subject: 'Confirme seu e-mail — BnotasWeb',
+      html: layoutEmail(`Olá, ${escaparHtml(nome) || "tudo bem"}!`, `
+        <p>Falta pouco para começar a usar o BnotasWeb. Confirme que este endereço é seu:</p>
+        <p style="text-align:center; margin: 24px 0;">
+          <a href="${link}" style="background:#6200ea; color:#fff; padding:12px 28px; text-decoration:none; border-radius:8px; font-weight:bold;">CONFIRMAR MEU E-MAIL</a>
+        </p>
+        <p style="font-size:0.85em; color:#777;">O link vale por 24 horas.</p>
+        <p style="font-size:0.85em; color:#777;">Se não foi você que criou esta conta, ignore esta mensagem — sem a confirmação, nenhum lembrete será enviado para você.</p>
+      `)
+    });
+    return { enviado: true };
+  },
+
+  /** Confirma o endereço a partir do token do e-mail. */
+  async verificarEmail(token: string) {
+    const user = await usuarioRepository.findByTokenVerificacao(token);
+    if (!user) {
+      throw new ApiError(400, 'Link inválido ou expirado. Peça um novo e-mail de confirmação.', 'TOKEN_INVALIDO');
+    }
+    await usuarioRepository.marcarEmailVerificado(user.id);
+    return { verificado: true, email: user.email };
+  },
+
+  /** Reenvia a confirmação para o usuário logado. */
+  async reenviarVerificacao(userId: number) {
+    const user = await usuarioRepository.findById(userId);
+    if (!user) throw new ApiError(404, 'Usuário não encontrado', 'USER_NOT_FOUND');
+    if (user.email_verificado) {
+      throw new ApiError(400, 'Este e-mail já está confirmado.', 'EMAIL_JA_VERIFICADO');
+    }
+    return this.enviarVerificacao(user.id, user.email, user.nome);
   },
 
   async login(email: string, senha: string) {
@@ -59,9 +112,9 @@ export const usuarioService = {
     return this.buildLoginResponse(user);
   },
 
-  buildLoginResponse(user: { id: number; email: string; nome: string; sobrenome: string; telefone?: string | null }) {
+  buildLoginResponse(user: { id: number; email: string; nome: string; sobrenome: string; telefone?: string | null; is_admin?: number | boolean; email_verificado?: number | boolean }) {
     const token = jwt.sign(
-      { sub: String(user.id), email: user.email },
+      { sub: String(user.id), email: user.email, type: ACCESS_TOKEN_TYPE },
       env.JWT_SECRET,
       { expiresIn: env.JWT_EXPIRES_IN as any }
     );
@@ -72,7 +125,9 @@ export const usuarioService = {
         email: user.email,
         nome: user.nome,
         sobrenome: user.sobrenome,
-        telefone: user.telefone
+        telefone: user.telefone,
+        isAdmin: !!user.is_admin,
+        emailVerificado: !!user.email_verificado
       }
     };
   },
@@ -81,7 +136,7 @@ export const usuarioService = {
   async login2FA(tempToken: string, codigo: string) {
     let payload: any;
     try {
-      payload = jwt.verify(tempToken, env.JWT_SECRET);
+      payload = jwt.verify(tempToken, env.JWT_SECRET, { algorithms: ['HS256'] });
     } catch {
       throw new ApiError(401, 'Sessão de verificação expirada. Faça login novamente.', 'TEMP_TOKEN_EXPIRED');
     }
@@ -177,7 +232,9 @@ export const usuarioService = {
     if (!user) throw new ApiError(404, 'Usuário não encontrado', 'USER_NOT_FOUND');
     return {
       nome: user.nome, sobrenome: user.sobrenome, email: user.email,
-      telefone: user.telefone || null, bio: user.bio || null, avatarUrl: user.avatarUrl || null
+      telefone: user.telefone || null, bio: user.bio || null, avatarUrl: user.avatarUrl || null,
+      isAdmin: !!user.is_admin,
+      emailVerificado: !!user.email_verificado
     };
   },
 
@@ -195,7 +252,7 @@ export const usuarioService = {
     // Se o usuário não existe, simplesmente não envia nada.
     if (!user) return { message: 'Se o e-mail existir, o link será enviado.' };
 
-    if (!env.EMAIL_USER || !env.EMAIL_PASS) {
+    if (!emailConfigurado()) {
       console.error('ERRO: Variáveis de e-mail não configuradas no .env');
       throw new ApiError(500, 'Servidor de e-mail não configurado', 'EMAIL_CONFIG_ERROR');
     }
@@ -207,19 +264,18 @@ export const usuarioService = {
     const tokenCodificado = encodeURIComponent(token);
     const link = `${env.APP_URL}/reset-password?token=${tokenCodificado}`;
 
-    const transporter = nodemailer.createTransport({
-      service: 'gmail',
-      auth: { user: env.EMAIL_USER, pass: env.EMAIL_PASS }
-    });
-
     try {
-      await transporter.sendMail({
-        from: `BnotasWeb <${env.EMAIL_USER}>`,
+      await enviarEmail({
         to: email,
-        subject: 'Redefinição de Senha',
-        html: `<p>Olá, ${user.nome || 'Usuário'}!</p>
-               <p>Clique no link abaixo para criar uma nova senha (válido por 1 hora e apenas 1 uso):</p>
-               <a href="${link}">REDEFINIR SENHA</a>`
+        subject: 'Redefinição de senha — BnotasWeb',
+        html: layoutEmail(`Olá, ${escaparHtml(user.nome) || "Usuário"}!`, `
+          <p>Recebemos um pedido para criar uma nova senha da sua conta.</p>
+          <p style="text-align:center; margin: 24px 0;">
+            <a href="${link}" style="background:#6200ea; color:#fff; padding:12px 28px; text-decoration:none; border-radius:8px; font-weight:bold;">REDEFINIR SENHA</a>
+          </p>
+          <p style="font-size:0.85em; color:#777;">O link vale por 1 hora e só pode ser usado uma vez.</p>
+          <p style="font-size:0.85em; color:#777;">Se não foi você que pediu, ignore esta mensagem — sua senha continua a mesma.</p>
+        `)
       });
     } catch (error) {
       console.error('Erro ao enviar e-mail:', error);
@@ -245,7 +301,7 @@ export const usuarioService = {
 
       // 3. Verifica a assinatura com o segredo derivado do hash atual.
       // Se a senha já foi trocada (link usado), a verificação falha.
-      jwt.verify(token, env.JWT_SECRET + user.senha);
+      jwt.verify(token, env.JWT_SECRET + user.senha, { algorithms: ['HS256'] });
 
       // 4. Atualiza senha
       const hash = await bcrypt.hash(newPass, 10);

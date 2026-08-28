@@ -1,13 +1,13 @@
 import cron from 'node-cron';
-import nodemailer from 'nodemailer';
 import { knex } from '../../db/knex';
 import { env } from '../../config/env';
+import { subscriptionService } from '../subscription/subscription.service';
+import { enviarEmail, layoutEmail, escaparHtml } from '../../utils/mailer';
 import { differenceInHours, differenceInDays, differenceInMinutes } from 'date-fns';
 
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: { user: env.EMAIL_USER, pass: env.EMAIL_PASS }
-});
+
+// Etapa 3 = "é hoje". É a partir dela que o plano gratuito recebe seu aviso único.
+const ETAPA_DIA_DO_VENCIMENTO = 3;
 
 export const startCronJobs = () => {
   // Roda a cada minuto
@@ -24,12 +24,14 @@ async function checkAndSendEmails() {
       .join('usuario_anotacao', 'anotacao.id', 'usuario_anotacao.anotacao_id')
       .join('usuario', 'usuario_anotacao.usuario_id', 'usuario.id')
       .select(
-        'anotacao.id', 
-        'anotacao.titulo', 
-        'anotacao.data_lembrete', 
+        'anotacao.id',
+        'anotacao.titulo',
+        'anotacao.data_lembrete',
         'anotacao.etapa_lembrete',
-        'usuario.email', 
-        'usuario.nome'
+        'usuario.id as usuario_id',
+        'usuario.email',
+        'usuario.nome',
+        'usuario.email_verificado'
       )
       .whereNotNull('anotacao.data_lembrete')
       .andWhere('anotacao.etapa_lembrete', '<', 7); // <--- AUMENTADO PARA 7
@@ -46,6 +48,10 @@ async function checkAndSendEmails() {
       let novaEtapa = nota.etapa_lembrete;
       let assunto = '';
       let mensagem = '';
+
+      // Título e nome são digitados pelo usuário: escapa antes de montar o e-mail
+      nota.titulo = escaparHtml(nota.titulo);
+      nota.nome = escaparHtml(nota.nome);
 
       // 1. Falta 1 semana (Etapa 1)
       if (diffDias <= 7 && diffDias > 2 && nota.etapa_lembrete < 1) {
@@ -95,18 +101,43 @@ async function checkAndSendEmails() {
 
       // Se mudou de etapa, envia email
       if (novaEtapa > nota.etapa_lembrete) {
-        console.log(`📧 Enviando aviso nível ${novaEtapa} para ${nota.email}`);
+        // Endereço não confirmado nunca recebe lembrete: impede que alguém cadastre
+        // o e-mail de outra pessoa e faça o app enviar mensagens para a vítima.
+        if (!nota.email_verificado) {
+          await knex('anotacao').where({ id: nota.id }).update({ etapa_lembrete: novaEtapa });
+          continue;
+        }
+
+        // Plano gratuito recebe UM único aviso — o do dia do vencimento.
+        // Planos pagos recebem a escalada completa (1 semana → 1 minuto).
+        // A etapa é marcada de qualquer forma, para não acumular avisos atrasados.
+        const escaladaCompleta = await subscriptionService.hasFeature(nota.usuario_id, 'email_notifications');
+        const primeiroAvisoDoDia =
+          nota.etapa_lembrete < ETAPA_DIA_DO_VENCIMENTO && novaEtapa >= ETAPA_DIA_DO_VENCIMENTO;
+
+        if (!escaladaCompleta && !primeiroAvisoDoDia) {
+          await knex('anotacao').where({ id: nota.id }).update({ etapa_lembrete: novaEtapa });
+          continue;
+        }
+
+        // No aviso do plano gratuito, convida a assinar para ter os avisos antecipados
+        const chamadaUpgrade = escaladaCompleta ? '' : `
+          <p style="font-size: 0.9em; color: #666; border-top: 1px solid #eee; padding-top: 12px; margin-top: 20px;">
+            Quer ser avisado com antecedência — 1 semana, 2 dias, 2 horas e nos minutos finais?
+            Isso está nos planos pagos do BnotasWeb.
+          </p>`;
+
+        console.log(`📧 Enviando aviso nível ${novaEtapa} para ${nota.email}${escaladaCompleta ? '' : ' (plano gratuito: aviso único)'}`);
         
-        await transporter.sendMail({
-          from: `BnotasWeb Alerta <${env.EMAIL_USER}>`,
+        await enviarEmail({
           to: nota.email,
           subject: assunto,
-          html: `<div style="font-family: sans-serif; color: #333;">
-                  <h2>${assunto}</h2>
-                  <p>${mensagem}</p>
-                  <br>
-                  <a href="${env.APP_URL}" style="background: #ff5252; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">IR PARA O APP</a>
-                 </div>`
+          html: layoutEmail(assunto, `
+            <p>${mensagem}</p>
+            <p style="text-align:center; margin: 24px 0;">
+              <a href="${env.APP_URL}" style="background:#ff5252; color:#fff; padding:12px 28px; text-decoration:none; border-radius:8px; font-weight:bold;">IR PARA O APP</a>
+            </p>
+            ${chamadaUpgrade}`)
         });
 
         await knex('anotacao').where({ id: nota.id }).update({ etapa_lembrete: novaEtapa });

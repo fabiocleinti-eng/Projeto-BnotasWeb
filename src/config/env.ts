@@ -8,6 +8,11 @@ const toArray = (value?: string): string[] => {
   return value.split(',').map((s) => s.trim()).filter(Boolean);
 };
 
+// Campo vazio no .env (ex.: "EMAIL_USER=") conta como não preenchido.
+// Sem isto o servidor nem sobe, com um erro de validação difícil de entender.
+const opcional = <T extends z.ZodTypeAny>(schema: T) =>
+  z.preprocess((v) => (v === '' ? undefined : v), schema.optional());
+
 const envSchema = z.object({
   NODE_ENV: z.string().default('development'),
   PORT: z.coerce.number().default(3000),
@@ -30,27 +35,39 @@ const envSchema = z.object({
   CORS_ORIGINS: z.string().transform(toArray).default('http://localhost:3000,http://localhost:4200'),
 
   // --- EMAIL (Lê do .env) ---
-  EMAIL_USER: z.string().email().optional(), // Opcional para não quebrar se não tiver configurado ainda
-  EMAIL_PASS: z.string().optional(),
+  EMAIL_USER: opcional(z.string().email()), // Opcional para não quebrar se não tiver configurado ainda
+  EMAIL_PASS: opcional(z.string()),
 
   // --- ENCRYPTION ---
   ENCRYPTION_KEY: z.string().default('dev-encryption-key-change-in-production-32chars'),
 
   // --- MERCADO PAGO ---
   // Em desenvolvimento use o Access Token de TESTE (TEST-...); em produção o APP_USR-...
-  MP_ACCESS_TOKEN: z.string().optional(),
+  MP_ACCESS_TOKEN: opcional(z.string()),
   // URL pública da API para o webhook (ex.: https://api.seudominio.com — em dev use ngrok, opcional)
-  MP_WEBHOOK_URL: z.string().optional()
+  MP_WEBHOOK_URL: opcional(z.string())
 });
 
 export const env = envSchema.parse(process.env);
 
+const JWT_SECRET_PADRAO = 'dev-secret';
+const ENCRYPTION_KEY_PADRAO = 'dev-encryption-key-change-in-production-32chars';
+
 // Em produção, não permitir segredos padrão de desenvolvimento
 if (env.NODE_ENV === 'production') {
-  if (env.JWT_SECRET === 'dev-secret' || env.JWT_SECRET.length < 32) {
+  if (env.JWT_SECRET === JWT_SECRET_PADRAO || env.JWT_SECRET.length < 32) {
     throw new Error('JWT_SECRET fraco ou ausente. Defina um segredo com pelo menos 32 caracteres no .env');
   }
-  if (env.ENCRYPTION_KEY === 'dev-encryption-key-change-in-production-32chars') {
+  if (env.ENCRYPTION_KEY === ENCRYPTION_KEY_PADRAO) {
     throw new Error('ENCRYPTION_KEY padrão detectada. Defina uma chave própria no .env');
+  }
+} else {
+  // Em desenvolvimento apenas avisa — os valores padrão são públicos (estão neste
+  // arquivo, versionado), então quem obtiver o banco decifra os segredos TOTP.
+  if (env.ENCRYPTION_KEY === ENCRYPTION_KEY_PADRAO) {
+    console.warn('⚠️  ENCRYPTION_KEY padrão em uso. Gere a sua: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))" e coloque no .env');
+  }
+  if (env.JWT_SECRET === JWT_SECRET_PADRAO || env.JWT_SECRET.length < 32) {
+    console.warn('⚠️  JWT_SECRET fraco. Gere um segredo longo e coloque no .env');
   }
 }

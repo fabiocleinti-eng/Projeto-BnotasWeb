@@ -1,4 +1,5 @@
 import { subscriptionRepository } from './subscription.repository';
+import { usuarioRepository } from '../usuario/usuario.repository';
 import { ApiError } from '../../middlewares/error';
 
 // Planos pré-definidos (exportado: o módulo de pagamento usa preços e features daqui)
@@ -125,7 +126,15 @@ export const subscriptionService = {
     return Object.values(PLANS);
   },
 
+  // Admin (flag no banco, definida só pelo script set-admin) tem todos os recursos
+  async isAdmin(userId: number): Promise<boolean> {
+    const user = await usuarioRepository.findById(userId);
+    return !!user?.is_admin;
+  },
+
   async hasFeature(userId: number, feature: string): Promise<boolean> {
+    if (await this.isAdmin(userId)) return true;
+
     let subscription = await subscriptionRepository.findByUserId(userId);
     subscription = await expireIfDue(subscription);
 

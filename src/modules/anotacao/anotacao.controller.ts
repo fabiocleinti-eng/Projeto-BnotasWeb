@@ -11,6 +11,15 @@ export const anotacaoController = {
     } catch (e) { next(e); }
   },
 
+  async exportNotes(req: Request, res: Response, next: NextFunction) {
+    try {
+      const md = await anotacaoService.exportMarkdown(req.user!.id);
+      res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
+      res.setHeader('Content-Disposition', 'attachment; filename="minhas-notas-bnotasweb.md"');
+      res.send(md);
+    } catch (e) { next(e); }
+  },
+
   async share(req: Request, res: Response, next: NextFunction) {
     try { res.json(await anotacaoService.share(req.user!.id, Number(req.params.id))); } catch (e) { next(e); }
   },

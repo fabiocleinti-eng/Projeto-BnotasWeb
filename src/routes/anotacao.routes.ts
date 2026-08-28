@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { auth } from '../middlewares/auth';
+import { requireFeature } from '../middlewares/subscription';
 import { authLimiter } from '../middlewares/rate-limit';
 import { validate } from '../middlewares/validate';
 import { anotacaoController } from '../modules/anotacao/anotacao.controller';
@@ -10,6 +11,8 @@ const router = Router();
 router.get('/anotacoes', auth, anotacaoController.list);
 router.post('/anotacoes', auth, validate(createAnotacaoSchema), anotacaoController.create);
 router.get('/anotacoes/trash', auth, anotacaoController.getTrash);
+// Exportar é recurso pago — bloqueado no servidor, não só na interface
+router.get('/anotacoes/export', auth, requireFeature('export_notes'), anotacaoController.exportNotes);
 router.get('/anotacoes/:id', auth, validate(idParamSchema), anotacaoController.get);
 router.put('/anotacoes/:id', auth, validate(updateAnotacaoSchema), anotacaoController.update);
 router.delete('/anotacoes/:id', auth, validate(idParamSchema), anotacaoController.remove);

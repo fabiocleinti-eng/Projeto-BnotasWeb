@@ -30,6 +30,12 @@ export const resetPasswordSchema = z.object({
   })
 });
 
+export const verificarEmailSchema = z.object({
+  body: z.object({
+    token: z.string().regex(/^[a-f0-9]{64}$/, 'Token inválido')
+  })
+});
+
 export const forgotPasswordSchema = z.object({
   body: z.object({
     email: z.string().email("Email inválido")
@@ -39,13 +45,23 @@ export const forgotPasswordSchema = z.object({
 // Aceita código TOTP (6 dígitos) ou código de backup (8 caracteres hex)
 const codigo2FA = z.string().regex(/^[a-fA-F0-9]{6,8}$/, "Código inválido");
 
+// A foto pode ser um endereço (http/https) OU a própria imagem embutida.
+// Só formatos de imagem conhecidos são aceitos — nada de SVG, que executa script.
+const FOTO_MAX = 150_000; // ~110 KB de imagem: sobra para uma foto 256x256
+const fotoPerfil = z.string()
+  .max(FOTO_MAX, 'Imagem muito grande')
+  .refine(
+    (v) => /^https?:\/\//i.test(v) || /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(v),
+    'Formato de imagem inválido'
+  );
+
 export const updatePerfilSchema = z.object({
   body: z.object({
     nome: z.string().min(1).max(255).optional(),
     sobrenome: z.string().min(1).max(255).optional(),
     telefone: z.string().max(20).nullable().optional(),
     bio: z.string().max(500).nullable().optional(),
-    avatarUrl: z.string().max(500).nullable().optional()
+    avatarUrl: fotoPerfil.nullable().optional()
   })
 });
 

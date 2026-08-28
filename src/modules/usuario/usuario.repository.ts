@@ -11,6 +11,10 @@ export type Usuario = {
   totp_secret?: string | null;   // segredo TOTP criptografado (2FA)
   totp_enabled?: number | boolean; // 2FA ativado
   totp_backup_codes?: string | null; // JSON com hashes dos códigos de backup
+  is_admin?: number | boolean; // libera todos os recursos pagos (definido só pelo script set-admin)
+  email_verificado?: number | boolean;
+  token_verificacao?: string | null;
+  token_verificacao_expira?: Date | string | null;
   bio?: string | null;
   avatarUrl?: string | null;
 };
@@ -58,6 +62,29 @@ export const usuarioRepository = {
     if (data.totp_enabled !== undefined) upd.totp_enabled = data.totp_enabled ? 1 : 0;
     if (data.totp_backup_codes !== undefined) upd.totp_backup_codes = data.totp_backup_codes;
     await knex(table).where({ id }).update(upd);
+  },
+
+  // === VERIFICAÇÃO DE E-MAIL ===
+  async findByTokenVerificacao(token: string): Promise<Usuario | undefined> {
+    return knex<Usuario>(table)
+      .where({ token_verificacao: token })
+      .andWhere('token_verificacao_expira', '>', new Date())
+      .first();
+  },
+
+  async definirTokenVerificacao(id: number, token: string, expiraEm: Date): Promise<void> {
+    await knex(table).where({ id }).update({
+      token_verificacao: token,
+      token_verificacao_expira: expiraEm
+    });
+  },
+
+  async marcarEmailVerificado(id: number): Promise<void> {
+    await knex(table).where({ id }).update({
+      email_verificado: 1,
+      token_verificacao: null,
+      token_verificacao_expira: null
+    });
   },
 
   async updateProfile(id: number, data: { nome?: string; sobrenome?: string; telefone?: string | null; bio?: string | null; avatarUrl?: string | null }): Promise<void> {

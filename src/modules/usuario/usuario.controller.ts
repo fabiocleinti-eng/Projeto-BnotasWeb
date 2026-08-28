@@ -77,6 +77,15 @@ export const usuarioController = {
     try { res.json(await usuarioService.get2FAStatus(req.user!.id)); } catch (e) { next(e); }
   },
 
+  // === VERIFICAÇÃO DE E-MAIL ===
+  async verificarEmail(req: Request, res: Response, next: NextFunction) {
+    try { res.json(await usuarioService.verificarEmail(req.body.token)); } catch (e) { next(e); }
+  },
+
+  async reenviarVerificacao(req: Request, res: Response, next: NextFunction) {
+    try { res.json(await usuarioService.reenviarVerificacao(req.user!.id)); } catch (e) { next(e); }
+  },
+
   async getPerfil(req: Request, res: Response, next: NextFunction) {
     try { res.json(await usuarioService.getPerfil(req.user!.id)); } catch (e) { next(e); }
   },
